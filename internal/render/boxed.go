@@ -10,11 +10,11 @@ import (
 )
 
 // RenderAggregate emits a rounded-box table of daily/weekly/monthly
-// aggregates. JSON delegation lands in Task 9; until then opts.JSON
-// surfaces an explicit error rather than silently writing nothing.
+// aggregates, or delegates to the camelCase JSON renderer when opts.JSON
+// is set.
 func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []AggregateRow, opts Options) error {
 	if opts.JSON {
-		return fmt.Errorf("render: JSON output for aggregate not implemented yet (Task 9)")
+		return d.renderAggregateJSON(w, kind, rows)
 	}
 	if len(rows) == 0 {
 		fmt.Fprintln(w, "(no data in range)")

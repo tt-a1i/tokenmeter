@@ -90,14 +90,20 @@ func New() Renderer { return defaultRenderer{} }
 
 type defaultRenderer struct{}
 
-// RenderSessions / RenderBlocks remain stubbed: cli/{session,blocks}.go
-// hasn't been switched over yet, so swap-in happens together with the
-// boxed implementations in Task 11 (sessions) and Task 12 (blocks).
+// RenderSessions / RenderBlocks dispatch the JSON path immediately (Task 9
+// landed the camelCase encoders); the boxed-table arms still stub pending
+// cli/{session,blocks}.go integration in Task 11 / 12.
 
-func (defaultRenderer) RenderSessions(_ io.Writer, _ []SessionRow, _ Options) error {
-	return fmt.Errorf("render: RenderSessions not implemented yet (Task 11)")
+func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Options) error {
+	if opts.JSON {
+		return d.renderSessionsJSON(w, rows)
+	}
+	return fmt.Errorf("render: RenderSessions boxed table not implemented yet (Task 11)")
 }
 
-func (defaultRenderer) RenderBlocks(_ io.Writer, _ []BlockRow, _ Options) error {
-	return fmt.Errorf("render: RenderBlocks not implemented yet (Task 12)")
+func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options) error {
+	if opts.JSON {
+		return d.renderBlocksJSON(w, rows)
+	}
+	return fmt.Errorf("render: RenderBlocks boxed table not implemented yet (Task 12)")
 }
