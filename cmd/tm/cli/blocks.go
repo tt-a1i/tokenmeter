@@ -19,15 +19,28 @@ type BlocksArgs struct {
 	Now           time.Time
 }
 
-// BlocksLoader is the storage subset RunBlocks needs.
-type BlocksLoader = blocks.Reader
+// BlocksLoader is the storage subset RunBlocks needs. Aliased to
+// AggregateLoader so `tm blocks` can honor `--since` / `--until` /
+// `--project` (P1 / P2-2 from the v1.0 review). Statusline still goes
+// through blocks.Reader via NewActiveBlockAdapter, which doesn't need
+// workspace filtering.
+type BlocksLoader = AggregateLoader
 
 // RunBlocks lists session blocks, optionally only the active one.
 func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader BlocksLoader) error {
-	all, err := blocks.LoadAll(ctx, loader, args.SessionLength, args.Now)
+	since, err := parseDateFlag(args.Shared.Since)
 	if err != nil {
 		return err
 	}
+	until, err := parseDateFlag(args.Shared.Until)
+	if err != nil {
+		return err
+	}
+	entries, err := loader.ListUsageForBlocksFiltered(ctx, since, until, args.Shared.Project)
+	if err != nil {
+		return err
+	}
+	all := blocks.Annotate(blocks.Identify(entries, args.SessionLength, args.Now), args.Now)
 	if args.Active {
 		all = filterActive(all)
 	}

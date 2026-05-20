@@ -21,6 +21,12 @@ The "Unreleased" section captures work merged but not yet tagged.
 - `--session-length` flag to customize block window.
 - LiteLLM-sourced pricing snapshot with weekly auto-refresh PR.
 - `--mode auto|calculate|display` cost mode.
+- `--since` / `--until` / `--project` now apply to `tm daily` / `tm weekly` / `tm monthly` / `tm session` / `tm blocks` (previously silently ignored).
+
+### Limitations (to be addressed in v1.0.1)
+- `--json` is honored by `tm blocks` but not yet by `tm daily` / `tm weekly` / `tm monthly` / `tm session`.
+- `--breakdown` (model breakdown) and `--order desc` are not wired through aggregate output.
+- `--mode auto|calculate|display` defaults to `display`; the calculate path is implemented in `internal/pricing.Apply` but not yet selected at the CLI layer.
 
 ## v0.8.3 — 2026-05-19 — Cross-platform CI fixes
 

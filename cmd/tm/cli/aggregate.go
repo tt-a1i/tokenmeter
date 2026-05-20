@@ -29,7 +29,15 @@ type AggregateLoader interface {
 }
 
 func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader AggregateLoader) error {
-	entries, err := loader.ListUsageForBlocksFiltered(ctx, time.Time{}, time.Time{}, a.Shared.Project)
+	since, err := parseDateFlag(a.Shared.Since)
+	if err != nil {
+		return err
+	}
+	until, err := parseDateFlag(a.Shared.Until)
+	if err != nil {
+		return err
+	}
+	entries, err := loader.ListUsageForBlocksFiltered(ctx, since, until, a.Shared.Project)
 	if err != nil {
 		return err
 	}
@@ -86,4 +94,17 @@ func bucketKey(ts time.Time, b Bucket) string {
 	default:
 		return ts.Format("2006-01-02")
 	}
+}
+
+// parseDateFlag accepts a YYYYMMDD shared-flag value and returns a UTC
+// time.Time. An empty string maps to the zero time, meaning "no bound".
+func parseDateFlag(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse("20060102", s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date %q (want YYYYMMDD): %w", s, err)
+	}
+	return t, nil
 }

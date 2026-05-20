@@ -30,3 +30,15 @@ schema changes. Hooks registered in `~/.claude/settings.json` continue to work.
   Code's status line shows `🤖 sonnet ▎ $X.XX (5h, Nm left) ▎ X.XK tok` in real
   time. Configure quota in `~/.tokenmeter/statusline.json`.
 - **LiteLLM pricing**: model prices auto-refresh weekly via PR.
+
+## Known v1.0 limitations
+
+The following shared flags are documented in `tm <cmd> --help` but **not yet
+honored** by `tm daily` / `tm weekly` / `tm monthly` / `tm session` in v1.0:
+
+- `--json` — table output is the only mode in v1.0; JSON support is planned for v1.0.1
+- `--mode auto|calculate|display` — display mode is the default behavior
+- `--breakdown` — model breakdown to be added in v1.0.1
+- `--order desc` — output is always ascending in v1.0
+
+`tm blocks` honors `--json` and `--active`. `tm <cmd> --since YYYYMMDD --until YYYYMMDD` now works for daily/weekly/monthly/session/blocks, and `--project <workspace>` filters by workspace path on all five.

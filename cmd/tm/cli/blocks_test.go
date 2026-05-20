@@ -14,7 +14,7 @@ import (
 
 type stubLoader struct{ items []storage.TokenUsageEntry }
 
-func (s stubLoader) ListUsageForBlocks(_ context.Context, _, _ time.Time) ([]storage.TokenUsageEntry, error) {
+func (s stubLoader) ListUsageForBlocksFiltered(_ context.Context, _, _ time.Time, _ string) ([]storage.TokenUsageEntry, error) {
 	return s.items, nil
 }
 

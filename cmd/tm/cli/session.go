@@ -6,7 +6,6 @@ import (
 	"io"
 	"sort"
 	"text/tabwriter"
-	"time"
 )
 
 type SessionArgs struct {
@@ -15,7 +14,15 @@ type SessionArgs struct {
 }
 
 func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader AggregateLoader) error {
-	entries, err := loader.ListUsageForBlocksFiltered(ctx, time.Time{}, time.Time{}, a.Shared.Project)
+	since, err := parseDateFlag(a.Shared.Since)
+	if err != nil {
+		return err
+	}
+	until, err := parseDateFlag(a.Shared.Until)
+	if err != nil {
+		return err
+	}
+	entries, err := loader.ListUsageForBlocksFiltered(ctx, since, until, a.Shared.Project)
 	if err != nil {
 		return err
 	}
