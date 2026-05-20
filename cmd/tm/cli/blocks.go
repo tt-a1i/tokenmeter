@@ -34,7 +34,7 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	if err != nil {
 		return err
 	}
-	until, err := parseDateFlag(args.Shared.Until)
+	until, err := ParseDateFlagUntil(args.Shared.Until)
 	if err != nil {
 		return err
 	}

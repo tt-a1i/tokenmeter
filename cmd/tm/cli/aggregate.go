@@ -38,7 +38,7 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 	if err != nil {
 		return err
 	}
-	until, err := parseDateFlag(a.Shared.Until)
+	until, err := ParseDateFlagUntil(a.Shared.Until)
 	if err != nil {
 		return err
 	}
@@ -192,6 +192,22 @@ func parseDateFlag(s string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("invalid date %q (want YYYYMMDD): %w", s, err)
 	}
 	return t, nil
+}
+
+// ParseDateFlagUntil mirrors parseDateFlag but bumps the result forward by
+// 24h so a `--until YYYYMMDD` flag becomes an inclusive closed interval to
+// the end of that day, matching ccusage's filter behavior. Empty input
+// passes through as the zero time (meaning "no bound"). Exported so the
+// shared-flag tests can pin the +24h contract directly.
+func ParseDateFlagUntil(s string) (time.Time, error) {
+	t, err := parseDateFlag(s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if t.IsZero() {
+		return t, nil
+	}
+	return t.Add(24 * time.Hour), nil
 }
 
 // applyPricingMode rewrites each entry's CostUSD according to mode:

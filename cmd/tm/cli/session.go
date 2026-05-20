@@ -40,7 +40,7 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 	if err != nil {
 		return err
 	}
-	until, err := parseDateFlag(a.Shared.Until)
+	until, err := ParseDateFlagUntil(a.Shared.Until)
 	if err != nil {
 		return err
 	}

@@ -124,6 +124,45 @@ func TestRunAggregateModeCalculate(t *testing.T) {
 	}
 }
 
+func TestParseDateFlagUntilClosedInterval(t *testing.T) {
+	got, err := cli.ParseDateFlagUntil("20260520")
+	if err != nil {
+		t.Fatalf("ParseDateFlagUntil: %v", err)
+	}
+	want := time.Date(2026, 5, 21, 0, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("got %v, want %v (+24h to give inclusive close on 2026-05-20)", got, want)
+	}
+}
+
+func TestParseDateFlagUntilEmpty(t *testing.T) {
+	got, err := cli.ParseDateFlagUntil("")
+	if err != nil {
+		t.Fatalf("ParseDateFlagUntil(\"\"): %v", err)
+	}
+	if !got.IsZero() {
+		t.Fatalf("empty input must stay zero, got %v", got)
+	}
+}
+
+func TestRunAggregateUntilInclusive(t *testing.T) {
+	// Entry at 23:59:00 on 2026-05-20 should be included when --until=20260520.
+	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
+		{SessionID: "s1", Timestamp: mustTime("2026-05-20T23:59:00Z"),
+			InputTokens: 100, Model: "claude-opus-4-7", CostUSD: 0.5},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+		Shared: cli.Shared{JSON: true, Until: "20260520"},
+		Bucket: cli.BucketDaily,
+	}, loader); err != nil {
+		t.Fatalf("RunAggregate: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"2026-05-20"`) {
+		t.Fatalf("expected 2026-05-20 row when --until=20260520, got:\n%s", buf.String())
+	}
+}
+
 func TestRunAggregateBreakdownPropagates(t *testing.T) {
 	// Two entries in the same daily bucket but different models — Breakdown=true
 	// must surface them as a modelBreakdowns array under that day's row.
