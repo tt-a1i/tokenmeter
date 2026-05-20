@@ -80,7 +80,10 @@ func mustOpenDB() *storage.DB {
 
 func main() {
 	if len(os.Args) < 2 {
-		printHelp()
+		if err := runCLIDispatch(nil); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
 

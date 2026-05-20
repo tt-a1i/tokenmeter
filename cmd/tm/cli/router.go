@@ -22,7 +22,10 @@ type Command struct {
 // is honored uniformly across subcommands.
 func Route(argv []string) (Command, error) {
 	if len(argv) == 0 {
-		return Command{Name: "help"}, nil
+		return Command{
+			Name:          "daily",
+			AggregateArgs: AggregateArgs{Bucket: BucketDaily},
+		}, nil
 	}
 	name := argv[0]
 	tail := argv[1:]

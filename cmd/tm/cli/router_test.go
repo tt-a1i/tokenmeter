@@ -55,3 +55,16 @@ func TestRouterDailySince(t *testing.T) {
 		t.Fatalf("Since=%q want 20260101", got.Shared.Since)
 	}
 }
+
+func TestRouteNoArgsDefaultsToDaily(t *testing.T) {
+	cmd, err := cli.Route(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Name != "daily" {
+		t.Fatalf("expected default 'daily', got %q", cmd.Name)
+	}
+	if cmd.AggregateArgs.Bucket != cli.BucketDaily {
+		t.Fatalf("expected BucketDaily, got %v", cmd.AggregateArgs.Bucket)
+	}
+}
