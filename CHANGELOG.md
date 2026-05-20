@@ -3,7 +3,7 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
-## v1.0.0 (unreleased)
+## v1.0.0 — 2026-05-20
 
 ### Breaking
 - TUI removed. `tm` (no arguments) now prints help instead of entering an interactive interface.
