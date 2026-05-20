@@ -965,29 +965,44 @@ type TokenUsageEntry struct {
 // order, optionally constrained to [since, until]. Used by internal/blocks
 // to identify 5h session blocks without aggregating in SQL.
 func (s *DB) ListUsageForBlocks(ctx context.Context, since, until time.Time) ([]TokenUsageEntry, error) {
-	q := `SELECT source_id, session_id, agent_id, timestamp, model,
-	             input_tokens, output_tokens, cache_creation_tokens,
-	             cache_read_tokens, cost_usd
-	      FROM token_usage`
-	var (
-		args   []any
-		wheres []string
-	)
+	return s.ListUsageForBlocksFiltered(ctx, since, until, "")
+}
+
+// ListUsageForBlocksFiltered returns token_usage rows joined to sessions and
+// filtered by workspace cwd (exact match). Empty workspace skips the filter.
+func (s *DB) ListUsageForBlocksFiltered(ctx context.Context, since, until time.Time, workspace string) ([]TokenUsageEntry, error) {
+	q := `SELECT u.source_id, u.session_id, u.agent_id, u.timestamp, u.model,
+	             u.input_tokens, u.output_tokens, u.cache_creation_tokens,
+	             u.cache_read_tokens, u.cost_usd
+	      FROM token_usage u
+	      JOIN sessions s ON s.session_id = u.session_id`
+	var args []any
+	var wheres []string
 	if !since.IsZero() {
-		wheres = append(wheres, "timestamp >= ?")
+		wheres = append(wheres, "u.timestamp >= ?")
 		args = append(args, formatStorageTime(since))
 	}
 	if !until.IsZero() {
-		wheres = append(wheres, "timestamp <= ?")
+		wheres = append(wheres, "u.timestamp <= ?")
 		args = append(args, formatStorageTime(until))
+	}
+	if workspace != "" {
+		wheres = append(wheres, "s.cwd = ?")
+		args = append(args, workspace)
 	}
 	if len(wheres) > 0 {
 		q += " WHERE " + strings.Join(wheres, " AND ")
 	}
-	q += " ORDER BY timestamp ASC"
+	q += " ORDER BY u.timestamp ASC"
+	return s.scanUsageRows(ctx, q, args)
+}
+
+// scanUsageRows runs `q` with `args` and decodes each row into a
+// TokenUsageEntry. Shared by every list API in the TokenUsage read path.
+func (s *DB) scanUsageRows(ctx context.Context, q string, args []any) ([]TokenUsageEntry, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list usage for blocks: %w", err)
+		return nil, fmt.Errorf("list usage rows: %w", err)
 	}
 	defer rows.Close()
 	var out []TokenUsageEntry

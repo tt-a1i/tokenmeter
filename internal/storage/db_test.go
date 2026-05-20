@@ -1437,3 +1437,32 @@ func TestListUsageForBlocks(t *testing.T) {
 		t.Fatalf("rows must be sorted ascending by timestamp")
 	}
 }
+
+func TestListUsageForBlocksFiltersByWorkspace(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, sid := range []string{"s-foo", "s-bar"} {
+		if err := db.UpsertSession(sid, event.PlatformClaude, now); err != nil {
+			t.Fatalf("UpsertSession %s: %v", sid, err)
+		}
+	}
+	if err := db.UpdateSessionMeta("s-foo", "/work/foo", ""); err != nil {
+		t.Fatalf("UpdateSessionMeta s-foo: %v", err)
+	}
+	if err := db.UpdateSessionMeta("s-bar", "/work/bar", ""); err != nil {
+		t.Fatalf("UpdateSessionMeta s-bar: %v", err)
+	}
+	for i, sid := range []string{"s-foo", "s-bar"} {
+		if err := db.InsertTokenUsage("a1", sid, 1, 1, 0, 0, "claude-sonnet-4-6", 0.001, now, fmt.Sprintf("src-%d", i)); err != nil {
+			t.Fatalf("InsertTokenUsage %s: %v", sid, err)
+		}
+	}
+	got, err := db.ListUsageForBlocksFiltered(ctx, time.Time{}, time.Time{}, "/work/foo")
+	if err != nil {
+		t.Fatalf("ListUsageForBlocksFiltered: %v", err)
+	}
+	if len(got) != 1 || got[0].SessionID != "s-foo" {
+		t.Fatalf("want 1 row with session s-foo, got %#v", got)
+	}
+}
