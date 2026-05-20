@@ -251,7 +251,11 @@ func runCLIDispatch(argv []string) error {
 	case "statusline":
 		adapter := cli.NewActiveBlockAdapter(db, 5*time.Hour, now)
 		cfgPath := appdir.Path("statusline.json")
-		return cli.RunStatusline(ctx, os.Stdin, os.Stdout, adapter, cfgPath, now)
+		return cli.RunStatusline(ctx, os.Stdin, os.Stdout, adapter, cfgPath, now,
+			cli.WithStatuslineOptions(cli.StatuslineOptions{
+				NoColor: cmd.Shared.NoColor,
+				Mode:    cmd.Shared.Mode,
+			}))
 	case "deprecated:daily", "deprecated:session", "deprecated:blocks-active":
 		return cli.RunDeprecatedAlias(ctx, os.Stdout, os.Stderr, cmd.Alias, cmd.Rest, db)
 	default:
