@@ -22,6 +22,7 @@ type Shared struct {
 	JQ            string
 	Config        string
 	SessionLength time.Duration
+	Active        bool
 }
 
 // ParseShared extracts shared flags from args. Returns the remaining
@@ -43,6 +44,7 @@ func ParseShared(args []string) (Shared, []string, error) {
 	fs.StringVar(&s.Config, "config", "", "config file path")
 	var sessionLengthStr string
 	fs.StringVar(&sessionLengthStr, "session-length", "5h", "duration of one session block (e.g. 5h, 1h30m)")
+	fs.BoolVar(&s.Active, "active", false, "blocks: show only the active 5h window")
 	// Allow flags to be interspersed with positionals: stdlib flag.Parse stops
 	// at the first non-flag token, so we drive it in a loop and accumulate the
 	// real positionals separately.

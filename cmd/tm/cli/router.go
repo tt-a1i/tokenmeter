@@ -53,13 +53,8 @@ func Route(argv []string) (Command, error) {
 		cmd.BlocksArgs = BlocksArgs{
 			Shared:        shared,
 			SessionLength: shared.SessionLength,
-			Active:        false,
+			Active:        shared.Active,
 			Now:           time.Now(),
-		}
-		for _, r := range rest {
-			if r == "--active" {
-				cmd.BlocksArgs.Active = true
-			}
 		}
 	case "statusline":
 		// Args parsed inline; main wires stdin/stdout.
