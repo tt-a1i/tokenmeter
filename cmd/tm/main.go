@@ -15,6 +15,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/tt-a1i/tokenmeter/cmd/tm/cli"
 	"github.com/tt-a1i/tokenmeter/internal/appdir"
 	"github.com/tt-a1i/tokenmeter/internal/collector"
 	"github.com/tt-a1i/tokenmeter/internal/daemon"
@@ -325,10 +326,44 @@ func main() {
 		}
 	case "help", "-h", "--help":
 		printHelp()
+	case "daily", "weekly", "monthly", "session", "blocks", "statusline":
+		if err := runCLIDispatch(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprint(os.Stderr, unknownCommandHelpMessage(os.Args[1]))
 		printHelp()
 		os.Exit(1)
+	}
+}
+
+// runCLIDispatch routes argv to the new ccusage-aligned cli subcommands
+// (daily / weekly / monthly / session / blocks / statusline). It opens the
+// storage DB once and reuses a single time.Now() reading across the
+// statusline adapter + Run call so block boundary math stays consistent.
+func runCLIDispatch(argv []string) error {
+	cmd, err := cli.Route(argv)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	db := mustOpenDB()
+	defer db.Close()
+	now := time.Now()
+	switch cmd.Name {
+	case "daily", "weekly", "monthly":
+		return cli.RunAggregate(ctx, os.Stdout, cmd.AggregateArgs, db)
+	case "session":
+		return cli.RunSession(ctx, os.Stdout, cmd.SessionArgs, db)
+	case "blocks":
+		return cli.RunBlocks(ctx, os.Stdout, cmd.BlocksArgs, db)
+	case "statusline":
+		adapter := cli.NewActiveBlockAdapter(db, 5*time.Hour, now)
+		cfgPath := appdir.Path("statusline.json")
+		return cli.RunStatusline(ctx, os.Stdin, os.Stdout, adapter, cfgPath, now)
+	default:
+		return fmt.Errorf("internal: unhandled cli dispatch for %q", cmd.Name)
 	}
 }
 
