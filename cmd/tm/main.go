@@ -878,12 +878,12 @@ var helpSections = []helpSection{
 		{"watch [opts]", "Stream live events to stdout"},
 	}},
 	{"Usage summary (ccusage-aligned)", []helpCommand{
-		{"daily", "Daily token / cost summary"},
-		{"weekly", "Weekly summary (ISO week)"},
+		{"daily", "Daily token / cost summary (default when no command)"},
+		{"weekly", "Weekly summary by ISO week"},
 		{"monthly", "Monthly summary"},
-		{"session [<id>]", "Per-session breakdown"},
-		{"blocks [--active]", "5-hour session blocks + burn rate"},
-		{"statusline", "Claude Code statusline provider (stdin → stdout)"},
+		{"session [<id>]", "Per-session breakdown, optionally one session"},
+		{"blocks [--active]", "5-hour session blocks + burn rate / projection"},
+		{"statusline", "Claude Code statusline provider (stdin JSON → stdout line)"},
 		{"share [session]", "Shareable Markdown session recap"},
 	}},
 	{"Analysis", []helpCommand{
@@ -932,10 +932,13 @@ func printHelp() {
 
 	fmt.Println("▎Examples")
 	for _, example := range []helpCommand{
-		{"tm daily", "Show today's tokens by day"},
+		{"tm", "Default — show daily token / cost summary"},
+		{"tm daily --breakdown", "Per-model nested rows under each day"},
+		{"tm daily --json | jq .totals", "CamelCase JSON envelope for scripts"},
+		{"tm daily --order desc", "Newest day first"},
+		{"tm daily --until 20260520", "Inclusive close — covers all of 2026-05-20"},
 		{"tm blocks --active", "Live 5h block with burn rate"},
-		{"tm export --range week", "Export this week as CSV"},
-		{"tm compare abc def", "Diff sessions by ID prefix"},
+		{"tm daily --timezone Asia/Shanghai", "Bucket days in a non-UTC zone"},
 		{`tm budget set "Monthly" 100 --platform claude`, "Create a Claude monthly budget"},
 	} {
 		fmt.Printf("  %-*s  # %s\n", width, example.name, example.desc)

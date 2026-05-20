@@ -3,6 +3,27 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
+## v1.0.1 — 2026-05-20
+
+### Added
+- `--json` actually takes effect on `tm daily` / `tm weekly` / `tm monthly` / `tm session` / `tm blocks`. The envelope is camelCase with a top-level wrapper (`daily` / `weekly` / `monthly` / `sessions` / `blocks` + `totals`) aligned with ccusage v20.
+- `--breakdown` actually renders per-model subrows for `tm daily` / `tm weekly` / `tm monthly` / `tm session`. Boxed output uses a `└─ <model>` nest; JSON adds a `modelBreakdowns[]` field on each row.
+- `--order desc` reverses the row order across daily / weekly / monthly / session.
+- `--mode auto|calculate|display` now applies for every cost-aware subcommand. `calculate` rewrites cost from `tokens × pricing.Resolve(model)`; `auto` only recomputes when the source row's cost is zero; `display` passes through unchanged.
+- `--timezone <IANA>` reroutes timestamp bucketing through the named zone (e.g. `--timezone Asia/Shanghai` puts 23:30 UTC into the next day).
+- `--project <path>` filters all subcommands by `sessions.cwd`.
+- `--no-color` actually suppresses ANSI escapes, with autodetection for non-TTY writers plus `NO_COLOR` and `FORCE_COLOR` environment variable support (`FORCE_COLOR` wins on TTYs, `NO_COLOR` wins everywhere else).
+- Table output aligned with ccusage: 8 / 9 column rounded box with TOTAL footer, Models cyan, token columns yellow, COST red, block STATUS (`ACTIVE` green / `gap` faint / `closed` dim).
+- Empty range prints `(no data in range)` instead of a bare header.
+- `--cpu-profile <path>` hidden flag writes a Go pprof CPU profile for `tm <subcommand>` invocations (developer tool — not advertised in `tm help`).
+
+### Changed
+- `tm` with no subcommand now runs `daily` (matching ccusage). `tm help`, `tm -h`, `tm --help` still surface the help text.
+- `--until YYYYMMDD` is now an inclusive close to the end of that day. Internally the parsed timestamp is bumped +24h before being compared with the loader's `<= until`, so an entry at 2026-05-20 23:59 is included when you ask for `--until 20260520`. Previously a half-open interval that silently dropped same-day data. See `docs/MIGRATION-v1.0.md`.
+
+### Performance
+- v1.0.1 baseline: `docs/perf/v1.0.1-baseline.md`. On a 1,587-session / 445,904-row / 549 MB local DB, warm `tm daily` runs at ~820 ms; cold ~2.4 s. Top hotspot is SQLite page reads via `syscall.Pread` (71.4% flat). v1.0.2 optimization candidates documented but not committed: `token_usage(timestamp DESC)` index, SQL-side `GROUP BY` push-down for the daily/weekly/monthly path, selective `SELECT` when `Mode != calculate`.
+
 ## v1.0.0 — 2026-05-20
 
 ### Breaking

@@ -42,3 +42,50 @@ honored** by `tm daily` / `tm weekly` / `tm monthly` / `tm session` in v1.0:
 - `--order desc` — output is always ascending in v1.0
 
 `tm blocks` honors `--json` and `--active`. `tm <cmd> --since YYYYMMDD --until YYYYMMDD` now works for daily/weekly/monthly/session/blocks, and `--project <workspace>` filters by workspace path on all five.
+
+## v1.0.1 changes
+
+v1.0.1 finishes the ccusage-alignment work the v1.0 changelog promised
+"in v1.0.1". Almost everything is additive — two notes deserve highlight.
+
+### `--until` semantics — potentially breaking
+
+- **v1.0.0:** `--until 20260520` resolved to `< 2026-05-20 00:00 UTC`
+  (half-open). Activity on 2026-05-20 itself was **excluded**.
+- **v1.0.1:** `--until 20260520` resolves to `< 2026-05-21 00:00 UTC`
+  (inclusive close to end-of-day). Activity on 2026-05-20 is now
+  **included**. Same wire format, different semantics — ccusage's
+  default.
+
+If a v1.0.0 script depended on the half-open behavior, subtract one day
+from the date when upgrading. Most users want the new behavior.
+
+### JSON schema — newly enforced
+
+- **v1.0.0:** `--json` was accepted but ignored; output was still the
+  hand-rolled tabwriter table.
+- **v1.0.1:** `--json` switches to a top-level envelope with camelCase
+  field names:
+  - `daily` / `weekly` / `monthly` wrap their rows under those keys.
+  - `sessions` wraps session rows.
+  - `blocks` wraps block rows.
+  - `totals` carries grand totals alongside each list.
+  - Per-row fields: `date` / `week` / `month` / `sessionId` / `period`,
+    `modelsUsed`, `inputTokens` / `outputTokens` / `cacheCreationTokens`
+    / `cacheReadTokens` / `totalTokens`, `totalCost`, and (when
+    `--breakdown` is set) `modelBreakdowns[]`. Block rows additionally
+    carry `status` and an optional `projection` object.
+  - Full schema lives in
+    `docs/superpowers/specs/2026-05-20-v1.0.1-ccusage-alignment-part1-design.md`
+    §Phase B.4.
+
+Pipe targets such as `jq`, `dasel`, or downstream automation that already
+worked against ccusage's JSON can be pointed at `tm` with no further
+adapter.
+
+### Color autodetection
+
+`--no-color` actually takes effect now. v1.0.1 also adds isatty
+autodetection plus the `NO_COLOR` and `FORCE_COLOR` environment variables
+(see https://no-color.org/). Resolution order: JSON output → `--no-color`
+flag → `NO_COLOR` env → `FORCE_COLOR` env → TTY check → off.
