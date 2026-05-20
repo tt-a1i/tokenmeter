@@ -82,6 +82,76 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 	return nil
 }
 
+// RenderSessions emits a rounded-box table keyed by session id with project
+// path + last-activity columns, or delegates to the JSON renderer when
+// opts.JSON is set. Column layout:
+//
+//	SESSION | PROJECT | MODELS | INPUT | OUTPUT | CACHE CRT. | CACHE READ | TOTAL | COST
+//
+// TOTAL footer leaves PROJECT blank — it's a per-row identifier, not summable.
+func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Options) error {
+	if opts.JSON {
+		return d.renderSessionsJSON(w, rows)
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(w, "(no data in range)")
+		return nil
+	}
+
+	t := table.NewWriter()
+	t.SetOutputMirror(w)
+	t.SetStyle(table.StyleRounded)
+	t.AppendHeader(table.Row{"Session", "Project", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost"})
+
+	colorize := func(c text.Color, s string) string {
+		if !opts.Color {
+			return s
+		}
+		return c.Sprint(s)
+	}
+
+	var sumIn, sumOut, sumCC, sumCR, sumTotal int64
+	var sumCost float64
+	for _, r := range rows {
+		t.AppendRow(table.Row{
+			r.SessionID,
+			r.ProjectPath,
+			colorize(text.FgCyan, joinList(r.Models)),
+			colorize(text.FgYellow, fmtInt(r.InputTokens)),
+			colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+			colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+			colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
+			colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+			colorize(text.FgRed, fmtCost(r.Cost)),
+		})
+		if opts.Breakdown {
+			for _, b := range r.Breakdown {
+				t.AppendRow(table.Row{
+					"└─ " + b.Model, "", "",
+					fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+					fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
+					fmtInt(b.TotalTokens), fmtCost(b.Cost),
+				})
+			}
+		}
+		sumIn += r.InputTokens
+		sumOut += r.OutputTokens
+		sumCC += r.CacheCreateTokens
+		sumCR += r.CacheReadTokens
+		sumTotal += r.TotalTokens
+		sumCost += r.Cost
+	}
+	t.AppendSeparator()
+	t.AppendFooter(table.Row{
+		"TOTAL", "", "",
+		fmtInt(sumIn), fmtInt(sumOut),
+		fmtInt(sumCC), fmtInt(sumCR),
+		fmtInt(sumTotal), fmtCost(sumCost),
+	})
+	t.Render()
+	return nil
+}
+
 func fmtInt(n int64) string {
 	if n >= 1_000_000 {
 		return fmt.Sprintf("%.2fM", float64(n)/1_000_000)

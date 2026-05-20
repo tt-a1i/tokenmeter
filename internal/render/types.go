@@ -90,16 +90,10 @@ func New() Renderer { return defaultRenderer{} }
 
 type defaultRenderer struct{}
 
-// RenderSessions / RenderBlocks dispatch the JSON path immediately (Task 9
-// landed the camelCase encoders); the boxed-table arms still stub pending
-// cli/{session,blocks}.go integration in Task 11 / 12.
-
-func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Options) error {
-	if opts.JSON {
-		return d.renderSessionsJSON(w, rows)
-	}
-	return fmt.Errorf("render: RenderSessions boxed table not implemented yet (Task 11)")
-}
+// RenderBlocks dispatches the JSON path immediately (Task 9 landed the
+// camelCase encoder); the boxed-table arm still stubs pending cli/blocks.go
+// integration in Task 12. RenderSessions / RenderAggregate boxed arms now
+// live in boxed.go.
 
 func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options) error {
 	if opts.JSON {
