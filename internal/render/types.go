@@ -90,18 +90,14 @@ func New() Renderer { return defaultRenderer{} }
 
 type defaultRenderer struct{}
 
-// Render* are stubbed pending Task 8 (boxed table) and Task 9 (JSON).
-// They surface an explicit error so accidental callers in this commit
-// don't see silent no-ops.
-
-func (defaultRenderer) RenderAggregate(_ io.Writer, _ string, _ []AggregateRow, _ Options) error {
-	return fmt.Errorf("render: RenderAggregate not implemented yet (Task 8/9)")
-}
+// RenderSessions / RenderBlocks remain stubbed: cli/{session,blocks}.go
+// hasn't been switched over yet, so swap-in happens together with the
+// boxed implementations in Task 11 (sessions) and Task 12 (blocks).
 
 func (defaultRenderer) RenderSessions(_ io.Writer, _ []SessionRow, _ Options) error {
-	return fmt.Errorf("render: RenderSessions not implemented yet (Task 8/9)")
+	return fmt.Errorf("render: RenderSessions not implemented yet (Task 11)")
 }
 
 func (defaultRenderer) RenderBlocks(_ io.Writer, _ []BlockRow, _ Options) error {
-	return fmt.Errorf("render: RenderBlocks not implemented yet (Task 8/9)")
+	return fmt.Errorf("render: RenderBlocks not implemented yet (Task 12)")
 }
