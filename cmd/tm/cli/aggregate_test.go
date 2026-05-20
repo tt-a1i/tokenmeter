@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -19,18 +20,43 @@ func (s stubAggregateLoader) ListUsageForBlocksFiltered(_ context.Context, _, _ 
 	return s.rows, nil
 }
 
-func TestRunDailyOutputsTableHeader(t *testing.T) {
-	var out bytes.Buffer
-	loader := stubAggregateLoader{} // returns no rows
-	err := cli.RunAggregate(context.Background(), &out, cli.AggregateArgs{
-		Shared: cli.Shared{},
+func TestRunDailyJSONEnvelope(t *testing.T) {
+	// Boxed-table headers changed when we switched to render.New(); the
+	// stable contract is the camelCase JSON envelope. Verify daily wraps
+	// rows under "daily" and surfaces a "totals" block.
+	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
+		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"),
+			InputTokens: 100, OutputTokens: 50, Model: "claude-opus-4-7", CostUSD: 0.5},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+		Shared: cli.Shared{JSON: true},
 		Bucket: cli.BucketDaily,
-	}, loader)
-	if err != nil {
+	}, loader); err != nil {
 		t.Fatalf("RunAggregate: %v", err)
 	}
-	if !strings.Contains(out.String(), "DATE") || !strings.Contains(out.String(), "COST") {
-		t.Fatalf("daily table missing headers: %q", out.String())
+	var got struct {
+		Daily []struct {
+			Date         string  `json:"date"`
+			InputTokens  int64   `json:"inputTokens"`
+			OutputTokens int64   `json:"outputTokens"`
+			TotalCost    float64 `json:"totalCost"`
+		} `json:"daily"`
+		Totals struct {
+			TotalCost float64 `json:"totalCost"`
+		} `json:"totals"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(got.Daily) != 1 || got.Daily[0].Date != "2026-05-19" {
+		t.Fatalf("expected single daily row dated 2026-05-19, got %+v", got.Daily)
+	}
+	if got.Daily[0].InputTokens != 100 || got.Daily[0].OutputTokens != 50 {
+		t.Errorf("token totals wrong: %+v", got.Daily[0])
+	}
+	if got.Totals.TotalCost < 0.49 {
+		t.Errorf("totals.totalCost wrong: %v", got.Totals.TotalCost)
 	}
 }
 
@@ -99,7 +125,27 @@ func TestRunAggregateModeCalculate(t *testing.T) {
 }
 
 func TestRunAggregateBreakdownPropagates(t *testing.T) {
-	// Phase A: structural test — Breakdown plumbing lives in aggGroup.perModel.
-	// Full render-layer coverage moves to Task 11.
-	t.Skip("structural test — coverage moves to render layer in Task 11")
+	// Two entries in the same daily bucket but different models — Breakdown=true
+	// must surface them as a modelBreakdowns array under that day's row.
+	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
+		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"),
+			InputTokens: 100, Model: "claude-opus-4-7", CostUSD: 1},
+		{SessionID: "s1", Timestamp: mustTime("2026-05-19T11:00:00Z"),
+			InputTokens: 200, Model: "gpt-5", CostUSD: 2},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+		Shared: cli.Shared{JSON: true, Breakdown: true},
+		Bucket: cli.BucketDaily,
+	}, loader); err != nil {
+		t.Fatalf("RunAggregate: %v", err)
+	}
+	out := buf.String()
+	// JSON envelope must surface per-model breakdown when --breakdown is set.
+	if !strings.Contains(out, "modelBreakdowns") {
+		t.Fatalf("expected modelBreakdowns key in --breakdown JSON, got:\n%s", out)
+	}
+	if !strings.Contains(out, "claude-opus-4-7") || !strings.Contains(out, "gpt-5") {
+		t.Fatalf("expected both models in breakdown, got:\n%s", out)
+	}
 }

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"text/tabwriter"
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
+	"github.com/tt-a1i/tokenmeter/internal/render"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
 
@@ -67,17 +67,56 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 	} else {
 		sort.Strings(keys)
 	}
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "DATE\tMODELS\tTOKENS\tCOST")
+
+	rows := make([]render.AggregateRow, 0, len(keys))
 	for _, k := range keys {
 		g := groups[k]
-		fmt.Fprintf(tw, "%s\t%s\t%s\t$%.2f\n", k, joinModels(g.models), fmtInt(g.tokens), g.cost)
+		row := render.AggregateRow{
+			Bucket:            k,
+			Models:            g.models,
+			InputTokens:       g.input,
+			OutputTokens:      g.output,
+			CacheCreateTokens: g.cacheCreate,
+			CacheReadTokens:   g.cacheRead,
+			TotalTokens:       g.input + g.output + g.cacheCreate + g.cacheRead,
+			Cost:              g.cost,
+		}
+		if a.Shared.Breakdown {
+			for model, st := range g.perModel {
+				row.Breakdown = append(row.Breakdown, render.ModelBreakdown{
+					Model:             model,
+					InputTokens:       st.Input,
+					OutputTokens:      st.Output,
+					CacheCreateTokens: st.CacheCreate,
+					CacheReadTokens:   st.CacheRead,
+					TotalTokens:       st.Input + st.Output + st.CacheCreate + st.CacheRead,
+					Cost:              st.Cost,
+				})
+			}
+			sort.Slice(row.Breakdown, func(i, j int) bool {
+				return row.Breakdown[i].Cost > row.Breakdown[j].Cost
+			})
+		}
+		rows = append(rows, row)
 	}
-	return tw.Flush()
+
+	return render.New().RenderAggregate(w, bucketKind(a.Bucket), rows, renderOpts(a.Shared, w))
+}
+
+// bucketKind maps the cli Bucket enum to the render package's string kind.
+func bucketKind(b Bucket) string {
+	switch b {
+	case BucketWeekly:
+		return "weekly"
+	case BucketMonthly:
+		return "monthly"
+	default:
+		return "daily"
+	}
 }
 
 // modelStats tracks per-model token + cost subtotals inside one aggGroup so
-// the render layer (Task 11) can emit Breakdown rows when --breakdown is set.
+// the render layer can emit Breakdown rows when --breakdown is set.
 type modelStats struct {
 	Input, Output, CacheCreate, CacheRead int64
 	Cost                                  float64
