@@ -4,22 +4,24 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"time"
 )
 
 // Shared holds CLI flags common to every subcommand. See spec §4.1.
 type Shared struct {
-	Since     string
-	Until     string
-	JSON      bool
-	Mode      string
-	Order     string
-	Breakdown bool
-	Offline   bool
-	Timezone  string
-	Project   string
-	NoColor   bool
-	JQ        string
-	Config    string
+	Since         string
+	Until         string
+	JSON          bool
+	Mode          string
+	Order         string
+	Breakdown     bool
+	Offline       bool
+	Timezone      string
+	Project       string
+	NoColor       bool
+	JQ            string
+	Config        string
+	SessionLength time.Duration
 }
 
 // ParseShared extracts shared flags from args. Returns the remaining
@@ -39,6 +41,8 @@ func ParseShared(args []string) (Shared, []string, error) {
 	fs.BoolVar(&s.NoColor, "no-color", false, "disable color")
 	fs.StringVar(&s.JQ, "jq", "", "post-filter JSON via jq expression")
 	fs.StringVar(&s.Config, "config", "", "config file path")
+	var sessionLengthStr string
+	fs.StringVar(&sessionLengthStr, "session-length", "5h", "duration of one session block (e.g. 5h, 1h30m)")
 	// Allow flags to be interspersed with positionals: stdlib flag.Parse stops
 	// at the first non-flag token, so we drive it in a loop and accumulate the
 	// real positionals separately.
@@ -54,6 +58,13 @@ func ParseShared(args []string) (Shared, []string, error) {
 		}
 		rest = append(rest, tail[0])
 		remaining = tail[1:]
+	}
+	if sessionLengthStr != "" {
+		d, err := time.ParseDuration(sessionLengthStr)
+		if err != nil {
+			return Shared{}, nil, fmt.Errorf("invalid --session-length: %w", err)
+		}
+		s.SessionLength = d
 	}
 	return s, rest, nil
 }

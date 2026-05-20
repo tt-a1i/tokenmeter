@@ -52,7 +52,7 @@ func Route(argv []string) (Command, error) {
 	case "blocks":
 		cmd.BlocksArgs = BlocksArgs{
 			Shared:        shared,
-			SessionLength: 5 * time.Hour, // default; --session-length wired in Task 23
+			SessionLength: shared.SessionLength,
 			Active:        false,
 			Now:           time.Now(),
 		}

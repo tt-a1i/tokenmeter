@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/tt-a1i/tokenmeter/cmd/tm/cli"
 )
@@ -34,5 +35,15 @@ func TestParseSharedPositionalUntouched(t *testing.T) {
 	}
 	if len(rest) != 1 || rest[0] != "daily" {
 		t.Fatalf("positional 'daily' must remain in rest, got %v", rest)
+	}
+}
+
+func TestParseSharedSessionLength(t *testing.T) {
+	got, _, err := cli.ParseShared([]string{"--session-length", "1h30m"})
+	if err != nil {
+		t.Fatalf("ParseShared: %v", err)
+	}
+	if got.SessionLength != 90*time.Minute {
+		t.Fatalf("SessionLength=%v want 1h30m", got.SessionLength)
 	}
 }
