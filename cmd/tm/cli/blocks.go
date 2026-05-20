@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
+	"github.com/tt-a1i/tokenmeter/internal/pricing"
 )
 
 // BlocksArgs is the resolved input to RunBlocks.
@@ -40,6 +41,7 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	if err != nil {
 		return err
 	}
+	entries = applyPricingMode(entries, pricing.ParseMode(args.Shared.Mode))
 	all := blocks.Annotate(blocks.Identify(entries, args.SessionLength, args.Now), args.Now)
 	if args.Active {
 		all = filterActive(all)

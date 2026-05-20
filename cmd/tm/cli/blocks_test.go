@@ -61,3 +61,22 @@ func TestRunBlocksJSONOutputsValidArray(t *testing.T) {
 		t.Fatalf("want 1 block, got %d", len(got))
 	}
 }
+
+func TestRunBlocksModeCalculate(t *testing.T) {
+	loader := stubLoader{items: []storage.TokenUsageEntry{
+		{SessionID: "s", Timestamp: mustTime("2026-05-19T10:00:00Z"),
+			InputTokens: 1_000_000, Model: "claude-opus-4-7", CostUSD: 0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunBlocks(context.Background(), &buf, cli.BlocksArgs{
+		Shared:        cli.Shared{Mode: "calculate", JSON: true},
+		SessionLength: 5 * time.Hour,
+		Now:           mustTime("2026-05-19T12:00:00Z"),
+	}, loader); err != nil {
+		t.Fatalf("RunBlocks: %v", err)
+	}
+	// JSON output should include non-zero cost.
+	if strings.Contains(buf.String(), `"cost":0`) || strings.Contains(buf.String(), `"cost": 0`) {
+		t.Fatalf("expected recalculated cost, got:\n%s", buf.String())
+	}
+}
