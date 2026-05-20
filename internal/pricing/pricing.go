@@ -79,6 +79,71 @@ func (m *Map) Lookup(model string) (Pricing, bool) {
 	return p, ok
 }
 
+// Resolve returns pricing for a model name, attempting (in order):
+//  1. exact match
+//  2. provider-stripped match: "anthropic/claude-sonnet-4-6" → "claude-sonnet-4-6"
+//  3. region-prefixed Bedrock IDs: "us.anthropic.claude-sonnet-4-6" → "claude-sonnet-4-6"
+//
+// Returns ok=false if no candidate matches.
+func (m *Map) Resolve(model string) (Pricing, bool) {
+	if p, ok := m.entries[model]; ok {
+		return p, true
+	}
+	candidates := []string{}
+	for _, sep := range []string{"/", "."} {
+		if i := lastIndex(model, sep); i >= 0 {
+			candidates = append(candidates, model[i+1:])
+		}
+	}
+	// Bedrock-style: "us.anthropic.claude-…"
+	if parts := splitAll(model, '.'); len(parts) >= 3 {
+		candidates = append(candidates, joinFrom(parts, 2, '-'))
+	}
+	for _, c := range candidates {
+		if p, ok := m.entries[c]; ok {
+			return p, true
+		}
+	}
+	return Pricing{}, false
+}
+
+func lastIndex(s, sep string) int {
+	idx := -1
+	for i := range s {
+		if i+len(sep) <= len(s) && s[i:i+len(sep)] == sep {
+			idx = i
+		}
+	}
+	return idx
+}
+
+func splitAll(s string, sep byte) []string {
+	var out []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == sep {
+			out = append(out, s[start:i])
+			start = i + 1
+		}
+	}
+	out = append(out, s[start:])
+	return out
+}
+
+func joinFrom(parts []string, from int, sep byte) string {
+	if from >= len(parts) {
+		return ""
+	}
+	var b []byte
+	for i := from; i < len(parts); i++ {
+		if i > from {
+			b = append(b, sep)
+		}
+		b = append(b, parts[i]...)
+	}
+	return string(b)
+}
+
 type liteLLMEntry struct {
 	InputCostPerToken                    *float64               `json:"input_cost_per_token"`
 	OutputCostPerToken                   *float64               `json:"output_cost_per_token"`
