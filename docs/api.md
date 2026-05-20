@@ -175,7 +175,7 @@ Prometheus 文本曝光格式（无 gzip、`Content-Type: text/plain; version=0.
     "output_tokens": 4096,
     "cost_usd": 0.41,
     "git_branch": "main",
-    "cwd": "/Users/admin/code/agmon",
+    "cwd": "/Users/admin/code/tokenmeter",
     "model": "claude-sonnet-4-6",
     "tag": "release-prep"
   }
@@ -192,7 +192,7 @@ Prometheus 文本曝光格式（无 gzip、`Content-Type: text/plain; version=0.
 
 ```bash
 curl 'http://localhost:8370/api/sessions?platform=claude&limit=50'
-curl 'http://localhost:8370/api/sessions?workspace=/Users/admin/code/agmon'
+curl 'http://localhost:8370/api/sessions?workspace=/Users/admin/code/tokenmeter'
 ```
 
 **Source**：`internal/web/server.go:handleSessions`
@@ -472,7 +472,7 @@ curl 'http://localhost:8370/api/costs?range=month' | jq '.total_cost'
   "top_expensive_sessions": [
     {
       "id": "126b5856-…", "cost_usd": 4.21,
-      "workspace": "/Users/admin/code/agmon", "git_branch": "main",
+      "workspace": "/Users/admin/code/tokenmeter", "git_branch": "main",
       "platform": "claude"
     }
   ],
@@ -634,7 +634,7 @@ curl 'http://localhost:8370/api/costs?range=month' | jq '.total_cost'
 [
   {
     "session_id": "…",
-    "session_name": "main / agmon",
+    "session_name": "main / tokenmeter",
     "platform": "claude",
     "kind": "tool_param",
     "excerpt": "…<mark>foo</mark>…",

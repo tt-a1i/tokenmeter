@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TokenMeter Architecture Diagram (Light)</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #f8fafc;
+      min-height: 100vh;
+      padding: 2rem;
+      color: #0f172a;
+    }
+
+    .container { max-width: 1280px; margin: 0 auto; }
+
+    .header { margin-bottom: 2rem; }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      background: #059669;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: #0f172a;
+    }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 0.875rem;
+      margin-left: 1.75rem;
+    }
+
+    .diagram-container {
+      background: #ffffff;
+      border-radius: 1rem;
+      border: 1px solid #e2e8f0;
+      padding: 1.5rem;
+      overflow-x: auto;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    }
+
+    svg {
+      width: 100%;
+      min-width: 1100px;
+      display: block;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 0.75rem;
+      border: 1px solid #e2e8f0;
+      padding: 1.25rem;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .card-dot.cyan { background: #0891b2; }
+    .card-dot.emerald { background: #059669; }
+    .card-dot.violet { background: #7c3aed; }
+    .card-dot.amber { background: #d97706; }
+    .card-dot.rose { background: #e11d48; }
+
+    .card h3 { font-size: 0.875rem; font-weight: 600; color: #0f172a; }
+
+    .card ul {
+      list-style: none;
+      color: #475569;
+      font-size: 0.75rem;
+    }
+
+    .card li { margin-bottom: 0.375rem; }
+
+    .footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      color: #94a3b8;
+      font-size: 0.75rem;
+    }
+
+    .toolbar {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      display: flex;
+      gap: 0.5rem;
+      z-index: 100;
+    }
+    .toolbar button {
+      background: rgba(255, 255, 255, 0.92);
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      padding: 0.5rem 0.875rem;
+      border-radius: 0.5rem;
+      font-family: inherit;
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .toolbar button:hover {
+      background: #ffffff;
+      border-color: #94a3b8;
+      color: #0f172a;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="btn-png" type="button">Export PNG</button>
+    <button id="btn-svg" type="button">Export SVG</button>
+  </div>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>TokenMeter — AI Agent Observability Architecture</h1>
+      </div>
+      <p class="subtitle">Unified observability for Claude Code + Codex — hooks, log watchers, SQLite, TUI &amp; Web</p>
+    </div>
+
+    <!-- Main Diagram -->
+    <div class="diagram-container">
+      <svg viewBox="0 0 1200 640">
+        <!-- Definitions -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+          </marker>
+          <marker id="arrowhead-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#059669" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e2e8f0" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- =================================================================
+             ARROWS (drawn first)
+             ================================================================= -->
+
+        <!-- Claude Code → tm emit -->
+        <line x1="180" y1="110" x2="410" y2="110" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="295" y="102" fill="#64748b" font-size="9" text-anchor="middle">hooks (stdin JSON)</text>
+
+        <!-- Claude Code → Claude JSONL -->
+        <path d="M 110 140 L 110 175 L 295 175 L 295 200" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="202" y="168" fill="#64748b" font-size="9" text-anchor="middle">writes</text>
+
+        <!-- Codex → Codex JSONL -->
+        <path d="M 110 460 L 110 425 L 295 425 L 295 400" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="202" y="418" fill="#64748b" font-size="9" text-anchor="middle">writes</text>
+
+        <!-- Claude JSONL → ClaudeLogWatcher -->
+        <line x1="370" y1="230" x2="410" y2="230" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="390" y="223" fill="#64748b" font-size="8" text-anchor="middle">poll</text>
+
+        <!-- Codex JSONL → CodexWatcher -->
+        <line x1="370" y1="370" x2="410" y2="370" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="390" y="363" fill="#64748b" font-size="8" text-anchor="middle">poll</text>
+
+        <!-- tm emit → daemon -->
+        <path d="M 560 110 L 582 110 L 582 195 L 600 195" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="592" y="152" fill="#64748b" font-size="8.5">Unix socket</text>
+
+        <!-- ClaudeLogWatcher → daemon -->
+        <line x1="560" y1="230" x2="600" y2="240" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- CodexWatcher → daemon -->
+        <line x1="560" y1="370" x2="600" y2="360" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- daemon → SQLite -->
+        <line x1="800" y1="320" x2="830" y2="320" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="815" y="314" fill="#64748b" font-size="8" text-anchor="middle">write</text>
+
+        <!-- daemon → TUI (live event broadcast, emerald) -->
+        <path d="M 800 180 L 895 180 L 895 140 L 1010 140" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+        <text x="945" y="132" fill="#059669" font-size="8.5" text-anchor="middle">events (live)</text>
+
+        <!-- SQLite → TUI -->
+        <path d="M 925 240 L 925 210 L 1010 210" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="960" y="204" fill="#64748b" font-size="8" text-anchor="middle">read</text>
+
+        <!-- SQLite → Web -->
+        <line x1="970" y1="380" x2="1010" y2="420" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="968" y="410" fill="#64748b" font-size="8" text-anchor="end">read</text>
+
+        <!-- Claude JSONL → Web (message viewer, dashed) -->
+        <path d="M 295 260 L 295 540 L 1095 540 L 1095 520" fill="none" stroke="#7c3aed" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+        <text x="690" y="534" fill="#7c3aed" font-size="8.5" text-anchor="middle">JSONL read for message viewer</text>
+
+        <!-- =================================================================
+             COMPONENTS (white bg + tinted fill)
+             ================================================================= -->
+
+        <!-- Claude Code (External — slate) -->
+        <rect x="40" y="80" width="140" height="60" rx="6" fill="#ffffff"/>
+        <rect x="40" y="80" width="140" height="60" rx="6" fill="rgba(148, 163, 184, 0.18)" stroke="#64748b" stroke-width="1.5"/>
+        <text x="110" y="104" fill="#0f172a" font-size="12" font-weight="600" text-anchor="middle">Claude Code</text>
+        <text x="110" y="120" fill="#64748b" font-size="9" text-anchor="middle">AI coding agent</text>
+        <text x="110" y="134" fill="#64748b" font-size="8" text-anchor="middle">hooks + JSONL</text>
+
+        <!-- Codex (External) -->
+        <rect x="40" y="460" width="140" height="60" rx="6" fill="#ffffff"/>
+        <rect x="40" y="460" width="140" height="60" rx="6" fill="rgba(148, 163, 184, 0.18)" stroke="#64748b" stroke-width="1.5"/>
+        <text x="110" y="484" fill="#0f172a" font-size="12" font-weight="600" text-anchor="middle">Codex</text>
+        <text x="110" y="500" fill="#64748b" font-size="9" text-anchor="middle">AI coding agent</text>
+        <text x="110" y="514" fill="#64748b" font-size="8" text-anchor="middle">JSONL only</text>
+
+        <!-- Claude JSONL (Database — violet) -->
+        <rect x="220" y="200" width="150" height="60" rx="6" fill="#ffffff"/>
+        <rect x="220" y="200" width="150" height="60" rx="6" fill="rgba(167, 139, 250, 0.2)" stroke="#7c3aed" stroke-width="1.5"/>
+        <text x="295" y="224" fill="#0f172a" font-size="12" font-weight="600" text-anchor="middle">Claude JSONL</text>
+        <text x="295" y="240" fill="#64748b" font-size="8" text-anchor="middle">~/.claude/projects/</text>
+        <text x="295" y="253" fill="#7c3aed" font-size="8" text-anchor="middle">token usage source</text>
+
+        <!-- Codex JSONL -->
+        <rect x="220" y="340" width="150" height="60" rx="6" fill="#ffffff"/>
+        <rect x="220" y="340" width="150" height="60" rx="6" fill="rgba(167, 139, 250, 0.2)" stroke="#7c3aed" stroke-width="1.5"/>
+        <text x="295" y="364" fill="#0f172a" font-size="12" font-weight="600" text-anchor="middle">Codex JSONL</text>
+        <text x="295" y="380" fill="#64748b" font-size="8" text-anchor="middle">~/.codex/sessions/</text>
+        <text x="295" y="393" fill="#7c3aed" font-size="8" text-anchor="middle">YYYY/MM/DD/*.jsonl</text>
+
+        <!-- tm emit (Backend — emerald) -->
+        <rect x="410" y="80" width="150" height="60" rx="6" fill="#ffffff"/>
+        <rect x="410" y="80" width="150" height="60" rx="6" fill="rgba(52, 211, 153, 0.18)" stroke="#059669" stroke-width="1.5"/>
+        <text x="485" y="104" fill="#0f172a" font-size="12" font-weight="600" text-anchor="middle">tm emit</text>
+        <text x="485" y="120" fill="#64748b" font-size="9" text-anchor="middle">hook stdin bridge</text>
+        <text x="485" y="134" fill="#64748b" font-size="8" text-anchor="middle">CLI → Unix socket</text>
+
+        <!-- ClaudeLogWatcher -->
+        <rect x="410" y="200" width="150" height="60" rx="6" fill="#ffffff"/>
+        <rect x="410" y="200" width="150" height="60" rx="6" fill="rgba(52, 211, 153, 0.18)" stroke="#059669" stroke-width="1.5"/>
+        <text x="485" y="224" fill="#0f172a" font-size="12" font-weight="600" text-anchor="middle">ClaudeLogWatcher</text>
+        <text x="485" y="240" fill="#64748b" font-size="9" text-anchor="middle">JSONL poller</text>
+        <text x="485" y="253" fill="#64748b" font-size="8" text-anchor="middle">assistant.usage</text>
+
+        <!-- CodexWatcher -->
+        <rect x="410" y="340" width="150" height="60" rx="6" fill="#ffffff"/>
+        <rect x="410" y="340" width="150" height="60" rx="6" fill="rgba(52, 211, 153, 0.18)" stroke="#059669" stroke-width="1.5"/>
+        <text x="485" y="364" fill="#0f172a" font-size="12" font-weight="600" text-anchor="middle">CodexWatcher</text>
+        <text x="485" y="380" fill="#64748b" font-size="9" text-anchor="middle">JSONL poller</text>
+        <text x="485" y="393" fill="#64748b" font-size="8" text-anchor="middle">session_meta · tokens</text>
+
+        <!-- tm daemon (Backend, tall) -->
+        <rect x="600" y="160" width="200" height="280" rx="6" fill="#ffffff"/>
+        <rect x="600" y="160" width="200" height="280" rx="6" fill="rgba(52, 211, 153, 0.18)" stroke="#059669" stroke-width="1.5"/>
+        <text x="700" y="184" fill="#0f172a" font-size="13" font-weight="700" text-anchor="middle">tm daemon</text>
+        <text x="700" y="200" fill="#64748b" font-size="9" text-anchor="middle">Unix socket server</text>
+        <text x="700" y="214" fill="#94a3b8" font-size="8" text-anchor="middle">~/.tokenmeter/tokenmeter.sock</text>
+
+        <line x1="620" y1="226" x2="780" y2="226" stroke="#059669" stroke-width="0.6" opacity="0.4"/>
+
+        <text x="700" y="248" fill="#059669" font-size="9" font-weight="600" text-anchor="middle">Responsibilities</text>
+        <text x="620" y="268" fill="#0f172a" font-size="9">• Event Normalizer</text>
+        <text x="620" y="285" fill="#0f172a" font-size="9">• Cost Estimator</text>
+        <text x="620" y="302" fill="#0f172a" font-size="9">• Subscription Broadcaster</text>
+        <text x="620" y="319" fill="#0f172a" font-size="9">• Storage Writer</text>
+
+        <line x1="620" y1="335" x2="780" y2="335" stroke="#059669" stroke-width="0.6" opacity="0.3"/>
+
+        <text x="700" y="354" fill="#64748b" font-size="8" text-anchor="middle">Pricing-aware:</text>
+        <text x="700" y="368" fill="#64748b" font-size="8" text-anchor="middle">Opus · Sonnet · Haiku</text>
+        <text x="700" y="381" fill="#64748b" font-size="8" text-anchor="middle">GPT-5 · GPT-4.1</text>
+
+        <text x="700" y="407" fill="#059669" font-size="8.5" font-weight="600" text-anchor="middle">Unified Event struct</text>
+        <text x="700" y="422" fill="#94a3b8" font-size="7.5" text-anchor="middle">dedup via source_id</text>
+
+        <!-- SQLite (Database) -->
+        <rect x="830" y="240" width="140" height="160" rx="6" fill="#ffffff"/>
+        <rect x="830" y="240" width="140" height="160" rx="6" fill="rgba(167, 139, 250, 0.2)" stroke="#7c3aed" stroke-width="1.5"/>
+        <text x="900" y="264" fill="#0f172a" font-size="13" font-weight="700" text-anchor="middle">SQLite</text>
+        <text x="900" y="280" fill="#64748b" font-size="8" text-anchor="middle">~/.tokenmeter/data/tokenmeter.db</text>
+
+        <line x1="846" y1="291" x2="954" y2="291" stroke="#7c3aed" stroke-width="0.6" opacity="0.4"/>
+
+        <text x="846" y="310" fill="#0f172a" font-size="9">• sessions</text>
+        <text x="846" y="326" fill="#0f172a" font-size="9">• agents</text>
+        <text x="846" y="342" fill="#0f172a" font-size="9">• tool_calls</text>
+        <text x="846" y="358" fill="#0f172a" font-size="9">• token_usage</text>
+        <text x="846" y="374" fill="#0f172a" font-size="9">• file_changes</text>
+
+        <text x="900" y="392" fill="#7c3aed" font-size="7.5" text-anchor="middle">modernc · pure Go</text>
+
+        <!-- TUI (Frontend — cyan) -->
+        <rect x="1010" y="100" width="170" height="160" rx="6" fill="#ffffff"/>
+        <rect x="1010" y="100" width="170" height="160" rx="6" fill="rgba(34, 211, 238, 0.15)" stroke="#0891b2" stroke-width="1.5"/>
+        <text x="1095" y="124" fill="#0f172a" font-size="13" font-weight="700" text-anchor="middle">tm TUI</text>
+        <text x="1095" y="140" fill="#64748b" font-size="9" text-anchor="middle">Bubbletea terminal UI</text>
+
+        <line x1="1026" y1="150" x2="1164" y2="150" stroke="#0891b2" stroke-width="0.6" opacity="0.4"/>
+
+        <text x="1026" y="170" fill="#0f172a" font-size="9">• Dashboard</text>
+        <text x="1026" y="186" fill="#0f172a" font-size="9">• Messages</text>
+        <text x="1026" y="202" fill="#0f172a" font-size="9">• Tool Calls</text>
+        <text x="1026" y="218" fill="#0f172a" font-size="9">• Stats</text>
+
+        <text x="1095" y="242" fill="#0891b2" font-size="8" text-anchor="middle">real-time event subscription</text>
+
+        <!-- Web Dashboard -->
+        <rect x="1010" y="360" width="170" height="160" rx="6" fill="#ffffff"/>
+        <rect x="1010" y="360" width="170" height="160" rx="6" fill="rgba(34, 211, 238, 0.15)" stroke="#0891b2" stroke-width="1.5"/>
+        <text x="1095" y="384" fill="#0f172a" font-size="13" font-weight="700" text-anchor="middle">tm web</text>
+        <text x="1095" y="400" fill="#64748b" font-size="9" text-anchor="middle">localhost:8370</text>
+
+        <line x1="1026" y1="410" x2="1164" y2="410" stroke="#0891b2" stroke-width="0.6" opacity="0.4"/>
+
+        <text x="1026" y="430" fill="#0f172a" font-size="9">• REST API + SPA</text>
+        <text x="1026" y="446" fill="#0f172a" font-size="9">• Cost charts</text>
+        <text x="1026" y="462" fill="#0f172a" font-size="9">• Dark / light mode</text>
+        <text x="1026" y="478" fill="#0f172a" font-size="9">• Session detail</text>
+
+        <text x="1095" y="502" fill="#0891b2" font-size="8" text-anchor="middle">reads SQLite + JSONL</text>
+
+        <!-- =================================================================
+             LEGEND
+             ================================================================= -->
+        <text x="40" y="585" fill="#0f172a" font-size="10" font-weight="600">Legend</text>
+
+        <rect x="100" y="577" width="16" height="10" rx="2" fill="rgba(148, 163, 184, 0.18)" stroke="#64748b" stroke-width="1"/>
+        <text x="122" y="586" fill="#64748b" font-size="9">External (AI agent)</text>
+
+        <rect x="270" y="577" width="16" height="10" rx="2" fill="rgba(52, 211, 153, 0.18)" stroke="#059669" stroke-width="1"/>
+        <text x="292" y="586" fill="#64748b" font-size="9">Backend (Go)</text>
+
+        <rect x="410" y="577" width="16" height="10" rx="2" fill="rgba(167, 139, 250, 0.2)" stroke="#7c3aed" stroke-width="1"/>
+        <text x="432" y="586" fill="#64748b" font-size="9">Database / Log file</text>
+
+        <rect x="580" y="577" width="16" height="10" rx="2" fill="rgba(34, 211, 238, 0.15)" stroke="#0891b2" stroke-width="1"/>
+        <text x="602" y="586" fill="#64748b" font-size="9">Frontend</text>
+
+        <line x1="720" y1="582" x2="740" y2="582" stroke="#059669" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+        <text x="748" y="586" fill="#64748b" font-size="9">live event stream</text>
+
+        <line x1="880" y1="582" x2="900" y2="582" stroke="#7c3aed" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="908" y="586" fill="#64748b" font-size="9">async log read</text>
+      </svg>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>Core Pipeline</h3>
+        </div>
+        <ul>
+          <li>• Single Go 1.24 binary, no deps</li>
+          <li>• Unix socket transport</li>
+          <li>• Event unification (Claude + Codex)</li>
+          <li>• Cost estimator with model-aware pricing</li>
+          <li>• Live pub/sub broadcaster to TUI</li>
+          <li>• SessionEnd cleanup, stale-session GC</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>Data Sources &amp; Storage</h3>
+        </div>
+        <ul>
+          <li>• Claude hooks: PreToolUse / PostToolUse</li>
+          <li>• Claude hooks: Session* / Subagent* / Stop</li>
+          <li>• Claude JSONL → tokens, usage, gitBranch</li>
+          <li>• Codex JSONL → session_meta, tokens</li>
+          <li>• SQLite: 5 tables, modernc pure-Go driver</li>
+          <li>• Dedup via <code>source_id</code> unique index</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>User Interfaces</h3>
+        </div>
+        <ul>
+          <li>• TUI: 4 tabs (Dashboard / Messages / Tool Calls / Stats)</li>
+          <li>• TUI: keyboard nav (j/k, Tab, / filter)</li>
+          <li>• TUI: 2s poll + live event push</li>
+          <li>• Web: REST API + embedded SPA</li>
+          <li>• Web: cost area chart, session detail</li>
+          <li>• Web: dark / light mode auto-detect</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <p class="footer">
+      TokenMeter · Go 1.24 · Bubbletea TUI · SQLite (modernc, pure-Go) · MIT License
+    </p>
+  </div>
+
+  <script>
+    const BG_COLOR = '#f8fafc';
+    const FILENAME = 'tokenmeter-architecture-light';
+
+    function serializeSvg() {
+      const svg = document.querySelector('svg');
+      const clone = svg.cloneNode(true);
+      const vb = svg.viewBox.baseVal;
+      clone.setAttribute('width', vb.width);
+      clone.setAttribute('height', vb.height);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+      const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      style.textContent = "text { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }";
+      clone.insertBefore(style, clone.firstChild);
+
+      const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bg.setAttribute('width', '100%');
+      bg.setAttribute('height', '100%');
+      bg.setAttribute('fill', BG_COLOR);
+      clone.insertBefore(bg, style.nextSibling);
+
+      return {
+        svgString: new XMLSerializer().serializeToString(clone),
+        width: vb.width,
+        height: vb.height,
+      };
+    }
+
+    function download(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    document.getElementById('btn-svg').addEventListener('click', () => {
+      const { svgString } = serializeSvg();
+      download(new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' }), FILENAME + '.svg');
+    });
+
+    document.getElementById('btn-png').addEventListener('click', () => {
+      const scale = 2;
+      const { svgString, width, height } = serializeSvg();
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(svgUrl);
+        canvas.toBlob((blob) => {
+          if (!blob) { alert('PNG export failed'); return; }
+          download(blob, FILENAME + '.png');
+        }, 'image/png');
+      };
+      img.onerror = (e) => {
+        console.error('PNG export failed', e);
+        URL.revokeObjectURL(svgUrl);
+        alert('PNG export failed — try Export SVG instead.');
+      };
+      img.src = svgUrl;
+    });
+  </script>
+</body>
+</html>

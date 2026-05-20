@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TokenMeter · 图解手册</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #f3ede0;
+  --paper-soft: #ece4d2;
+  --paper-deep: #e3d9c2;
+  --ink: #1a1f2e;
+  --ink-soft: #3d4459;
+  --ink-faint: #6b6f7d;
+  --accent: #b85b1f;
+  --accent-deep: #8f4014;
+  --sea: #244558;
+  --sea-light: #416478;
+  --olive: #6b7b4c;
+  --rule: rgba(26, 31, 46, 0.12);
+  --rule-soft: rgba(26, 31, 46, 0.06);
+  --glow: rgba(184, 91, 31, 0.08);
+  --grid-ink: rgba(26, 31, 46, 0.045);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 40px; }
+body {
+  font-family: 'Instrument Sans', -apple-system, sans-serif;
+  background: var(--paper);
+  background-image:
+    linear-gradient(var(--grid-ink) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-ink) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+  color: var(--ink);
+  line-height: 1.65;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: var(--accent); width: 0%; z-index: 100; transition: width 80ms linear; }
+.masthead { position: fixed; top: 16px; right: 24px; z-index: 50; display: flex; gap: 16px; align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-faint); letter-spacing: 0.05em; }
+.masthead .dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; }
+.toc { position: fixed; left: 32px; top: 50%; transform: translateY(-50%); z-index: 40; max-height: 80vh; overflow-y: auto; }
+.toc ol { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.toc a { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--ink-faint); text-decoration: none; letter-spacing: 0.04em; padding: 4px 10px 4px 18px; display: block; border-left: 1px solid var(--rule); transition: all 200ms ease; white-space: nowrap; }
+.toc a:hover { color: var(--ink); border-left-color: var(--ink-soft); }
+.toc a.active { color: var(--accent); border-left-color: var(--accent); border-left-width: 2px; padding-left: 17px; font-weight: 600; }
+.toc a .num { color: inherit; margin-right: 8px; opacity: 0.6; }
+@media (max-width: 1200px) { .toc { display: none; } }
+main { max-width: 860px; margin: 0 auto; padding: 0 32px 120px; }
+.cover { min-height: 88vh; display: flex; flex-direction: column; justify-content: center; padding: 80px 0 60px; position: relative; }
+.cover::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 80% 10%, var(--glow), transparent 50%), radial-gradient(ellipse at 20% 90%, rgba(36, 69, 88, 0.06), transparent 50%); pointer-events: none; }
+.stamp { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.18em; color: var(--ink-faint); margin-bottom: 36px; display: inline-flex; align-items: center; gap: 10px; }
+.stamp .rule { width: 40px; height: 1px; background: var(--ink-faint); }
+.stamp .num { color: var(--accent); font-weight: 700; }
+h1.title { font-family: 'Fraunces', serif; font-weight: 400; font-size: clamp(48px, 7vw, 88px); line-height: 0.98; letter-spacing: -0.02em; font-variation-settings: "opsz" 144, "SOFT" 30; margin-bottom: 24px; }
+h1.title em { font-style: italic; color: var(--accent); font-variation-settings: "opsz" 144, "SOFT" 80; }
+.subtitle { font-family: 'Fraunces', serif; font-weight: 300; font-style: italic; font-size: clamp(20px, 2.4vw, 26px); color: var(--ink-soft); max-width: 620px; line-height: 1.4; font-variation-settings: "opsz" 48; margin-bottom: 64px; }
+.tldr-card { background: var(--paper-soft); border: 1px solid var(--rule); border-left: 3px solid var(--accent); padding: 28px 32px; position: relative; max-width: 680px; box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 24px 40px -32px rgba(26,31,46,0.15); }
+.tldr-card::before { content: 'TL;DR'; position: absolute; top: -10px; left: 20px; background: var(--paper); padding: 0 10px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.15em; color: var(--accent); font-weight: 700; }
+.tldr-card ol { list-style: none; counter-reset: tldr; display: flex; flex-direction: column; gap: 12px; }
+.tldr-card li { counter-increment: tldr; position: relative; padding-left: 32px; font-size: 16px; }
+.tldr-card li::before { content: counter(tldr); position: absolute; left: 0; top: 1px; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: var(--paper); font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.colophon { margin-top: 100px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; padding-top: 28px; border-top: 1px solid var(--rule); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-faint); line-height: 1.6; letter-spacing: 0.02em; }
+.colophon dt { color: var(--ink); font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px; }
+.scroll-hint { position: absolute; bottom: 40px; left: 0; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--ink-faint); letter-spacing: 0.15em; display: flex; align-items: center; gap: 10px; animation: pulse 3s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.5; transform: translateY(0); } 50% { opacity: 1; transform: translateY(3px); } }
+section.chapter { padding: 100px 0 40px; position: relative; scroll-margin-top: 30px; }
+.chapter-head { margin-bottom: 48px; position: relative; }
+.chapter-num { font-family: 'Fraunces', serif; font-style: italic; font-size: clamp(80px, 11vw, 160px); font-weight: 300; line-height: 0.9; color: var(--paper-deep); letter-spacing: -0.04em; margin-bottom: -20px; font-variation-settings: "opsz" 144, "SOFT" 100; user-select: none; pointer-events: none; }
+.chapter-kicker { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.18em; color: var(--accent); font-weight: 700; text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+.chapter-kicker .tick { width: 20px; height: 1px; background: var(--accent); }
+h2.chapter-title { font-family: 'Fraunces', serif; font-weight: 500; font-size: clamp(32px, 4.5vw, 48px); line-height: 1.05; letter-spacing: -0.02em; font-variation-settings: "opsz" 72, "SOFT" 20; margin-bottom: 16px; position: relative; z-index: 2; }
+h2.chapter-title em { font-style: italic; font-variation-settings: "opsz" 72, "SOFT" 80; color: var(--accent); }
+.chapter-lede { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 300; line-height: 1.5; color: var(--ink-soft); max-width: 600px; font-variation-settings: "opsz" 48; font-style: italic; }
+.prose { max-width: 720px; }
+.prose > * + * { margin-top: 1.1em; }
+.prose h3 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 22px; font-variation-settings: "opsz" 48; margin-top: 2.4em; margin-bottom: 0.4em; letter-spacing: -0.01em; }
+.prose h3::before { content: '§'; color: var(--accent); margin-right: 10px; font-weight: 400; font-family: 'Fraunces', serif; }
+.prose h4 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 14.5px; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 1.8em; margin-bottom: 0.4em; color: var(--sea); }
+.prose p { color: var(--ink-soft); }
+.prose p strong { color: var(--ink); font-weight: 700; }
+.prose ul, .prose ol { padding-left: 22px; color: var(--ink-soft); }
+.prose ul li { list-style: none; position: relative; padding-left: 8px; margin-top: 0.3em; }
+.prose ul li::before { content: '—'; position: absolute; left: -18px; color: var(--accent); font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.prose ol li { margin-top: 0.3em; }
+code, .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; }
+.prose code { background: var(--paper-soft); padding: 1px 6px; border-radius: 2px; color: var(--accent-deep); border: 1px solid var(--rule-soft); }
+.callout { margin: 1.8em 0; padding: 20px 24px; border-left: 3px solid; background: var(--paper-soft); font-size: 15px; line-height: 1.55; position: relative; }
+.callout.analogy { border-color: var(--olive); background: rgba(107, 123, 76, 0.07); }
+.callout.warn { border-color: var(--accent); background: rgba(184, 91, 31, 0.06); }
+.callout.key { border-color: var(--sea); background: rgba(36, 69, 88, 0.06); }
+.callout .label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; display: inline-block; }
+.callout.analogy .label { color: var(--olive); }
+.callout.warn .label { color: var(--accent); }
+.callout.key .label { color: var(--sea); }
+.callout p + p { margin-top: 0.6em; }
+.lane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 2em 0; }
+.lane-card { background: var(--paper-soft); border: 1px solid var(--rule); padding: 18px 20px; position: relative; transition: all 200ms ease; }
+.lane-card:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -12px rgba(26,31,46,0.2); }
+.lane-card .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--accent); font-weight: 700; margin-bottom: 8px; }
+.lane-card h5 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 19px; margin-bottom: 6px; font-variation-settings: "opsz" 36; }
+.lane-card .meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-faint); line-height: 1.5; }
+.lane-card .meta dt { color: var(--ink); font-weight: 700; margin-top: 6px; }
+.lane-card .status { position: absolute; top: 14px; right: 16px; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; padding: 2px 6px; background: var(--paper); border: 1px solid var(--rule); color: var(--ink-faint); }
+.lane-card .status.now { color: var(--accent); border-color: var(--accent); }
+.lane-card .status.soon { color: var(--sea); border-color: var(--sea); }
+.figure { margin: 2.4em 0; padding: 28px 24px; background: var(--paper-soft); border: 1px solid var(--rule); position: relative; }
+.figure .caption { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--ink-faint); letter-spacing: 0.1em; margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--rule); text-transform: uppercase; }
+.figure svg { display: block; max-width: 100%; height: auto; }
+.node-box { fill: var(--paper); stroke: var(--ink); stroke-width: 1.2; }
+.node-box.soft { fill: var(--paper-soft); }
+.node-box.accent { fill: var(--accent); stroke: var(--accent); }
+.node-box.sea { fill: var(--sea); stroke: var(--sea); }
+.node-text { font-family: 'Instrument Sans', sans-serif; font-size: 12px; fill: var(--ink); font-weight: 600; }
+.node-text.kicker { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; fill: var(--ink-faint); letter-spacing: 0.1em; }
+.node-text.on-dark { fill: var(--paper); }
+.edge { fill: none; stroke: var(--ink-soft); stroke-width: 1.2; }
+.edge-accent { fill: none; stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 4 3; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 2em 0; }
+.split > div { padding: 20px 22px; border: 1px solid var(--rule); background: var(--paper-soft); font-size: 15px; position: relative; }
+.split .before::before, .split .after::before { content: 'BEFORE'; position: absolute; top: -10px; left: 16px; background: var(--paper); padding: 0 8px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--ink-faint); font-weight: 700; }
+.split .after::before { content: 'AFTER'; color: var(--accent); }
+.split h5 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 17px; margin-bottom: 8px; }
+.split ul li { font-size: 14px; padding-left: 14px; color: var(--ink-soft); }
+.split ul li::before { left: -14px; }
+@media (max-width: 640px) { .split { grid-template-columns: 1fr; } }
+table.clean { width: 100%; margin: 2em 0; border-collapse: collapse; font-size: 14px; background: var(--paper-soft); }
+table.clean th { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; text-align: left; padding: 12px 14px; background: var(--ink); color: var(--paper); text-transform: uppercase; font-weight: 700; }
+table.clean td { padding: 12px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; color: var(--ink-soft); }
+table.clean td:first-child { color: var(--ink); font-weight: 600; }
+table.clean code { font-size: 12px; }
+table.clean tr:last-child td { border-bottom: none; }
+.rt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 2em 0; }
+.rt-card { padding: 20px 22px; border: 1px solid var(--rule); background: var(--paper-soft); position: relative; }
+.rt-card .rt-icon { position: absolute; top: 16px; right: 20px; font-family: 'Fraunces', serif; font-style: italic; font-size: 40px; color: var(--paper-deep); line-height: 1; font-variation-settings: "opsz" 144, "SOFT" 80; }
+.rt-card h5 { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+.rt-card .role { font-family: 'Fraunces', serif; font-weight: 500; font-size: 18px; font-variation-settings: "opsz" 36; margin-bottom: 10px; }
+.rt-card p { font-size: 14px; color: var(--ink-soft); }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px 16px; margin: 2em 0; }
+.check-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px dotted var(--rule); font-size: 14px; }
+.check-item .idx { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); font-weight: 700; min-width: 22px; }
+.check-item .label { color: var(--ink); font-weight: 600; }
+.check-item .hint { color: var(--ink-faint); font-size: 12.5px; }
+.principles { display: grid; grid-template-columns: 1fr; gap: 2px; margin: 2em 0; border: 1px solid var(--ink); }
+.principle { display: grid; grid-template-columns: 60px 1fr; padding: 18px 22px; background: var(--paper-soft); border-bottom: 1px solid var(--rule); align-items: baseline; transition: background 200ms; }
+.principle:hover { background: var(--paper-deep); }
+.principle:last-child { border-bottom: none; }
+.principle .pn { font-family: 'Fraunces', serif; font-style: italic; font-size: 32px; font-variation-settings: "opsz" 72, "SOFT" 80; color: var(--accent); }
+.principle .pt { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; font-variation-settings: "opsz" 36; }
+.principle .ps { font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+footer.end { margin-top: 120px; padding: 60px 0 40px; border-top: 1px solid var(--rule); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-faint); line-height: 1.8; letter-spacing: 0.05em; }
+footer.end .signature { font-family: 'Fraunces', serif; font-style: italic; font-size: 22px; font-variation-settings: "opsz" 48, "SOFT" 80; color: var(--ink-soft); margin-bottom: 16px; }
+footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--rule); }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+
+<div class="masthead">
+  <span class="dot"></span>
+  <span>FIELD GUIDE · TokenMeter</span>
+  <span>·</span>
+  <span>2026-04-24</span>
+</div>
+
+<nav class="toc" aria-label="目录">
+  <ol>
+    <li><a href="#cover"><span class="num">00</span>封面</a></li>
+    <li><a href="#why"><span class="num">01</span>为什么</a></li>
+    <li><a href="#what"><span class="num">02</span>TokenMeter 做了什么</a></li>
+    <li><a href="#sources"><span class="num">03</span>两条数据源</a></li>
+    <li><a href="#event"><span class="num">04</span>统一事件</a></li>
+    <li><a href="#schema"><span class="num">05</span>SQLite 五张表</a></li>
+    <li><a href="#tui"><span class="num">06</span>TUI 四视图</a></li>
+    <li><a href="#web"><span class="num">07</span>Web Dashboard</a></li>
+    <li><a href="#identity"><span class="num">08</span>去重与身份</a></li>
+    <li><a href="#cmd"><span class="num">09</span>命令速查</a></li>
+    <li><a href="#close"><span class="num">10</span>原则</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============== 00 · COVER ============== -->
+<section class="cover" id="cover">
+  <div class="stamp">
+    <span class="rule"></span>
+    <span class="num">Field Guide 00</span>
+    <span>/ TOKENMETER</span>
+  </div>
+
+  <h1 class="title">给 AI 编码 Agent<br>装一副<em>仪表盘</em></h1>
+
+  <p class="subtitle">一个常驻本地的 daemon，把 Claude Code 和 Codex 的每次工具调用、每次 token 消耗、每一次会话都收集进 SQLite，再用 TUI 和 Web 两套面板回放给你看。</p>
+
+  <div class="tldr-card">
+    <ol>
+      <li>用 Claude Code / Codex 写代码，钱花在哪里、做了什么、花了多长时间——默认是黑盒。TokenMeter 把它打开。</li>
+      <li>两条数据源：Claude 走 hook 事件 + JSONL 日志，Codex 只能扫日志。一个 daemon 接住，统一落到 SQLite。</li>
+      <li>终端里 <code>tm</code> 开 TUI 看四视图；浏览器里 <code>tm web</code> 开 Dashboard。零配置、单二进制、纯 Go。</li>
+    </ol>
+  </div>
+
+  <dl class="colophon">
+    <div>
+      <dt>读给谁</dt>
+      <dd>在用 AI 编码 agent 的开发者；想知道"花了多少、做了什么"的维护者；想理解 TokenMeter 架构的贡献者。</dd>
+    </div>
+    <div>
+      <dt>读完能答</dt>
+      <dd>TokenMeter 解决什么问题、数据怎么来、怎么落库、TUI/Web 怎么读、为什么两条平台路径不一样。</dd>
+    </div>
+    <div>
+      <dt>对照原件</dt>
+      <dd>README.md · CLAUDE.md · docs/architecture.svg · internal/* 源码</dd>
+    </div>
+  </dl>
+
+  <div class="scroll-hint">SCROLL · 往下读 ↓</div>
+</section>
+
+<!-- ============== 01 · WHY ============== -->
+<section class="chapter" id="why">
+  <div class="chapter-head">
+    <div class="chapter-num">01</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER ONE · 先看痛点</div>
+    <h2 class="chapter-title">AI 编码的<em>黑盒</em></h2>
+    <p class="chapter-lede">用 Claude Code 或 Codex 的那一刻，你其实并不知道它在花多少钱、做了什么、上下文塞了多少。</p>
+  </div>
+
+  <div class="prose">
+
+    <p>跑完一个任务，<b>唯一能看见的</b>是终端里最后一行 "Done"。至于：</p>
+
+    <ul>
+      <li>这次会话花了多少 token？多少钱？</li>
+      <li>Claude 真的读了那个文件，还是只搜了关键词？</li>
+      <li>它 spawn 了几个 subagent？每个跑了多久？</li>
+      <li>上周这个项目在 AI 编码上的总支出是多少？哪个模型贵？</li>
+      <li>上次改错的地方，是哪次 Edit 调用？参数是什么？</li>
+    </ul>
+
+    <p>这些问题，官方 UI 都不直接回答。你只能翻 <code>~/.claude/projects/</code> 下那堆 JSONL 文件，或者每次会话结束打开 Codex 的 sessions 目录一行行看。</p>
+
+    <div class="callout analogy">
+      <div class="label">类比 · 开车不看仪表</div>
+      <p>想象你开车上高速，没有时速表、没有油表、没有行程里程。车还能开，但你不知道油还剩多少、一个月花了多少油钱、哪段路最费油。TokenMeter 就是给 AI 编码这辆车装上仪表盘。</p>
+    </div>
+
+    <h3>常见场景</h3>
+
+    <div class="split">
+      <div class="before">
+        <h5>没有 TokenMeter</h5>
+        <ul>
+          <li>月底看 API 账单懵住</li>
+          <li>怀疑某个任务慢，但找不到是哪次 tool call</li>
+          <li>Subagent 出错了，不知道它调了什么</li>
+          <li>想回忆"上次那个 prompt 是咋写的"，找不到</li>
+        </ul>
+      </div>
+      <div class="after">
+        <h5>有 TokenMeter</h5>
+        <ul>
+          <li>今日/本周/本月费用一眼看清</li>
+          <li>每个 tool 调用耗时、参数、结果都在</li>
+          <li>Subagent 层级可折叠展开</li>
+          <li>按 <code>/</code> 搜索历史 prompt</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout key">
+      <div class="label">核心承诺</div>
+      <p>正常使用 Claude Code 或 Codex，TokenMeter 在<b>后台自动采集</b>——不改变你的工作流，只是把一直就发生但你看不见的事变成可见。</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============== 02 · WHAT ============== -->
+<section class="chapter" id="what">
+  <div class="chapter-head">
+    <div class="chapter-num">02</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER TWO · 一张图看全</div>
+    <h2 class="chapter-title">一个 daemon <em>接住所有</em></h2>
+    <p class="chapter-lede">架构可以在一张图里讲完：左边数据源、中间 daemon + SQLite、右边 TUI 与 Web。</p>
+  </div>
+
+  <div class="prose">
+
+    <div class="figure">
+      <svg viewBox="0 0 760 360" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="dotgrid" width="16" height="16" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.6" fill="rgba(26,31,46,0.1)"/>
+          </pattern>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3d4459"/>
+          </marker>
+          <marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#b85b1f"/>
+          </marker>
+        </defs>
+        <rect width="760" height="360" fill="url(#dotgrid)"/>
+
+        <!-- Data sources -->
+        <g transform="translate(20 30)">
+          <text class="node-text kicker" x="0" y="0">① DATA SOURCES · 数据源</text>
+          <rect class="node-box" x="0" y="10" width="190" height="50" rx="2"/>
+          <text class="node-text" x="95" y="32" text-anchor="middle">Claude Code hooks</text>
+          <text class="node-text kicker" x="95" y="48" text-anchor="middle">8 种 Pre/Post 事件</text>
+          <rect class="node-box" x="0" y="70" width="190" height="50" rx="2"/>
+          <text class="node-text" x="95" y="92" text-anchor="middle">Claude JSONL</text>
+          <text class="node-text kicker" x="95" y="108" text-anchor="middle">~/.claude/projects/</text>
+          <rect class="node-box" x="0" y="130" width="190" height="50" rx="2"/>
+          <text class="node-text" x="95" y="152" text-anchor="middle">Codex JSONL</text>
+          <text class="node-text kicker" x="95" y="168" text-anchor="middle">~/.codex/sessions/</text>
+        </g>
+
+        <!-- Collectors -->
+        <g transform="translate(240 80)">
+          <text class="node-text kicker" x="0" y="0">② COLLECTORS · 转换</text>
+          <rect class="node-box soft" x="0" y="10" width="160" height="40" rx="2"/>
+          <text class="node-text" x="80" y="34" text-anchor="middle">tm emit</text>
+          <rect class="node-box soft" x="0" y="60" width="160" height="40" rx="2"/>
+          <text class="node-text" x="80" y="84" text-anchor="middle">ClaudeLogWatcher</text>
+          <rect class="node-box soft" x="0" y="110" width="160" height="40" rx="2"/>
+          <text class="node-text" x="80" y="134" text-anchor="middle">CodexWatcher</text>
+        </g>
+
+        <!-- Daemon -->
+        <g transform="translate(440 110)">
+          <text class="node-text kicker" x="0" y="0">③ DAEMON · 中央调度</text>
+          <rect class="node-box sea" x="0" y="10" width="140" height="100" rx="2"/>
+          <text class="node-text on-dark" x="70" y="45" text-anchor="middle" style="font-family:Fraunces,serif;font-size:18px;font-weight:500;">TokenMeter</text>
+          <text class="node-text on-dark" x="70" y="65" text-anchor="middle" style="font-family:Fraunces,serif;font-size:18px;font-weight:500;">daemon</text>
+          <text class="node-text kicker on-dark" x="70" y="85" text-anchor="middle" style="fill:#e3d9c2">Unix socket</text>
+          <text class="node-text kicker on-dark" x="70" y="98" text-anchor="middle" style="fill:#e3d9c2">PID lock</text>
+        </g>
+
+        <!-- SQLite -->
+        <g transform="translate(440 240)">
+          <rect class="node-box" x="0" y="0" width="140" height="50" rx="2"/>
+          <text class="node-text" x="70" y="22" text-anchor="middle">SQLite</text>
+          <text class="node-text kicker" x="70" y="38" text-anchor="middle">~/.tokenmeter/data/tokenmeter.db</text>
+        </g>
+
+        <!-- Consumers -->
+        <g transform="translate(620 80)">
+          <text class="node-text kicker" x="0" y="0">④ CONSUMERS · 界面</text>
+          <rect class="node-box accent" x="0" y="10" width="120" height="50" rx="2"/>
+          <text class="node-text on-dark" x="60" y="32" text-anchor="middle">tm TUI</text>
+          <text class="node-text kicker on-dark" x="60" y="48" text-anchor="middle" style="fill:#efe9d9">bubbletea · 4 tabs</text>
+          <rect class="node-box accent" x="0" y="130" width="120" height="50" rx="2"/>
+          <text class="node-text on-dark" x="60" y="152" text-anchor="middle">tm web</text>
+          <text class="node-text kicker on-dark" x="60" y="168" text-anchor="middle" style="fill:#efe9d9">HTTP · :8370</text>
+        </g>
+
+        <!-- Edges -->
+        <line class="edge" x1="210" y1="55" x2="240" y2="105" marker-end="url(#arrow)"/>
+        <line class="edge" x1="210" y1="115" x2="240" y2="155" marker-end="url(#arrow)"/>
+        <line class="edge" x1="210" y1="175" x2="240" y2="205" marker-end="url(#arrow)"/>
+        <line class="edge" x1="400" y1="115" x2="440" y2="145" marker-end="url(#arrow)"/>
+        <line class="edge" x1="400" y1="165" x2="440" y2="165" marker-end="url(#arrow)"/>
+        <line class="edge" x1="400" y1="215" x2="440" y2="185" marker-end="url(#arrow)"/>
+        <line class="edge" x1="510" y1="215" x2="510" y2="240" marker-end="url(#arrow)"/>
+        <line class="edge-accent" x1="580" y1="160" x2="620" y2="115" marker-end="url(#arrow-accent)"/>
+        <line class="edge-accent" x1="580" y1="200" x2="620" y2="240" marker-end="url(#arrow-accent)"/>
+      </svg>
+      <div class="caption">Figure 02-A · 完整数据流</div>
+    </div>
+
+    <h3>五块各自干什么</h3>
+
+    <ol>
+      <li><b>数据源</b>：两类 AI 编码工具产出三种信号——Claude 的 hook 事件（实时）、Claude 的 JSONL 日志（token 真相）、Codex 的 JSONL 日志（唯一通道）</li>
+      <li><b>Collectors · 转换层</b>：<code>tm emit</code> 是 hook 的轻量接收端；<code>ClaudeLogWatcher</code> 扫描 JSONL 补 token；<code>CodexWatcher</code> 轮询 Codex 会话目录</li>
+      <li><b>Daemon</b>：Unix socket 接事件 → 写 SQLite → 广播给订阅者。单例，PID lock 保护</li>
+      <li><b>SQLite</b>：<code>~/.tokenmeter/data/tokenmeter.db</code>，5 张表装下所有历史</li>
+      <li><b>Consumers</b>：TUI（bubbletea，4 个 tab）订阅实时事件；Web（嵌入式 SPA + REST API）独立启动</li>
+    </ol>
+
+    <div class="callout key">
+      <div class="label">一句话版本</div>
+      <p>左边抓数据、中间 daemon 存库、右边两种界面展示。抓取与展示解耦——daemon 在后台安静跑着，开不开 TUI 都不影响数据持续采集。</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============== 03 · DATA SOURCES ============== -->
+<section class="chapter" id="sources">
+  <div class="chapter-head">
+    <div class="chapter-num">03</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER THREE · 两条路径</div>
+    <h2 class="chapter-title">Claude 和 Codex<em>不一样</em></h2>
+    <p class="chapter-lede">Claude Code 给了 hook 机制，实时、干净；Codex 没有，只能扫日志。所以 TokenMeter 为它们各自写了一条 collector。</p>
+  </div>
+
+  <div class="prose">
+
+    <div class="lane-grid">
+      <div class="lane-card">
+        <div class="status now">REALTIME</div>
+        <div class="tag">PATH · A</div>
+        <h5>Claude Code</h5>
+        <dl class="meta">
+          <dt>信号 1</dt><dd>8 种 hook 事件（PreToolUse / PostToolUse / SessionStart / Stop / SubagentStart / ...）</dd>
+          <dt>信号 2</dt><dd>JSONL 日志补 token 数量</dd>
+          <dt>传输</dt><dd>Unix socket（实时）</dd>
+          <dt>延迟</dt><dd>毫秒级</dd>
+        </dl>
+      </div>
+      <div class="lane-card">
+        <div class="status soon">POLL</div>
+        <div class="tag">PATH · B</div>
+        <h5>Codex</h5>
+        <dl class="meta">
+          <dt>信号</dt><dd>JSONL 日志（唯一通道）</dd>
+          <dt>传输</dt><dd>文件系统轮询</dd>
+          <dt>延迟</dt><dd>秒级</dd>
+          <dt>去重</dt><dd>内存 lastTokenUsage map</dd>
+        </dl>
+      </div>
+    </div>
+
+    <h3>Claude Code 路径：hook + 日志"双通道"</h3>
+
+    <p>Claude Code 的每个 tool 调用都会 stdin 发一个 JSON 给 TokenMeter 注册的 hook 脚本（<code>PreToolUse</code> 发起前、<code>PostToolUse</code> 完成后）。hook 脚本就是 <code>tm emit</code>——把 stdin 读完，转成事件发到 Unix socket，结束。</p>
+
+    <p><b>但是</b>——hook 本身<b>不携带 token 数量</b>。Claude 只在把会话写 JSONL 时附上 usage。所以 TokenMeter 同时跑一个 <code>ClaudeLogWatcher</code> 扫描 <code>~/.claude/projects/</code> 下那些 JSONL 文件，找 <code>type == "assistant"</code> 的行，从 <code>message.usage</code> 把 token 数补进数据库。</p>
+
+    <div class="callout analogy">
+      <div class="label">类比 · 餐厅点单 + 小票</div>
+      <p>Hook 像服务员实时报给后台"桌 3 点了宫保鸡丁"——知道点了什么但不知道价格。真要结账，得等厨房打印小票（JSONL 日志）来对账。TokenMeter 两头都接，才能同时知道"做了什么"和"花了多少钱"。</p>
+    </div>
+
+    <h3>Codex 路径：只能扫日志</h3>
+
+    <p>Codex 没有 hook 机制。TokenMeter 启一个 <code>CodexWatcher</code> 轮询 <code>~/.codex/sessions/YYYY/MM/DD/*.jsonl</code>。关注三种 payload：</p>
+
+    <ul>
+      <li><code>session_meta</code> → 会话开始</li>
+      <li><code>response_item</code> → 工具调用（<code>function_call</code> 起、<code>function_call_output</code> 完）</li>
+      <li><code>event_msg</code> with <code>type:"token_count"</code> → token 记账</li>
+    </ul>
+
+    <p>轮询意味着<b>同一份数据可能被读两次</b>。Codex watcher 在内存里维护 <code>lastTokenUsage</code> map 去重，保证不重复计费。</p>
+
+    <div class="callout warn">
+      <div class="label">设计取舍</div>
+      <p>Codex 路径天然比 Claude 慢、粗、依赖去重。如果以后 Codex 出了 hook，这条路径可以退役；当下只能先扫日志兜底，宁可多做一次工作，也不能遗漏会话。</p>
+    </div>
+
+    <h3>Claude JSONL 的一个小坑 · cwd 编码</h3>
+
+    <p>Claude 把会话 JSONL 存在 <code>~/.claude/projects/&lt;cwd-encoded&gt;/&lt;session-id&gt;.jsonl</code>。cwd 的编码规则是：每个 <code>/</code> 替换成 <code>-</code>（含首字符）。比如：</p>
+
+    <ul>
+      <li><code>/Users/admin/code/tokenmeter</code> → <code>-Users-admin-code-tokenmeter</code></li>
+    </ul>
+
+    <p>这个细节写在 <code>internal/collector/claude.go</code> 里——错一个字符，就找不到日志文件。</p>
+
+  </div>
+</section>
+
+<!-- ============== 04 · UNIFIED EVENT ============== -->
+<section class="chapter" id="event">
+  <div class="chapter-head">
+    <div class="chapter-num">04</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER FOUR · 统一</div>
+    <h2 class="chapter-title">两条路，<em>一种事件</em></h2>
+    <p class="chapter-lede">不管数据从 Claude 还是 Codex 来，都先转成同一个 Event struct 再进 daemon。这是架构里最省事的一招。</p>
+  </div>
+
+  <div class="prose">
+
+    <div class="figure" style="padding: 24px 28px;">
+      <pre style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.55; color: var(--ink); background: var(--paper); padding: 18px 20px; border: 1px solid var(--rule); overflow-x: auto;">type Event struct {
+    ID        string     <span style="color:var(--ink-faint)">// tool_use_id (Claude) 或 call_id (Codex)</span>
+    Type      EventType  <span style="color:var(--ink-faint)">// ToolCallStart | End | AgentStart | ...</span>
+    SessionID string
+    AgentID   string
+    Platform  Platform   <span style="color:var(--accent-deep)">// "claude" | "codex"</span>
+    Timestamp time.Time
+    Data      EventData
+}</pre>
+      <div class="caption">Figure 04-A · internal/event/event.go</div>
+    </div>
+
+    <h3>为什么这样设计</h3>
+
+    <p>Claude 和 Codex 的原生事件结构<b>完全不一样</b>。Claude 的 hook JSON 有 <code>hook_event_name / session_id / tool_input / tool_use_id</code>；Codex 的 JSONL 里是 <code>timestamp / type / payload</code> 套娃。</p>
+
+    <p>如果 daemon、storage、TUI 都分别处理两种原生格式，每加一个平台就要在五个地方改代码。所以 TokenMeter 的第一件事是把它们<b>收敛到统一 Event</b>，后面所有层都只认 Event。</p>
+
+    <div class="callout analogy">
+      <div class="label">类比 · 海关报关单</div>
+      <p>不管你是从日本运电器、从法国运红酒、还是从美国运芯片，到了海关都得填同一张报关单。集装箱、船舱、搬运方式各不相同，但报关单格式固定。daemon 对待事件的方式一样——你从哪条路径来的，到我这都是一个 <code>Event</code>。</p>
+    </div>
+
+    <h3>Pre / Post 关联靠 ID 对齐</h3>
+
+    <p>一次工具调用其实是<b>两个事件</b>：Pre 发起前、Post 完成后。daemon 靠 <code>Event.ID</code> 关联两头，算出 <code>duration_ms</code>。</p>
+
+    <ul>
+      <li><b>Claude</b> 用 <code>tool_use_id</code>（Claude Code 保证全局唯一）</li>
+      <li><b>Codex</b> 用 <code>call_id</code>（函数调用 id）</li>
+    </ul>
+
+    <p>一条调用 Pre 先到、Post 后到——中间可能隔几秒。daemon 维护一张待配对 map，Post 到时 pop 出来更新那行 tool_calls 记录。</p>
+
+    <div class="callout key">
+      <div class="label">统一事件的红利</div>
+      <p>未来接第三个平台（比如 Cursor、Cline 或自研 agent），只需要写一个新的 collector 把原生信号转成 <code>Event</code>，后面 daemon / storage / TUI / Web 全都<b>不用改</b>。这是"统一模型"为软件换来的弹性。</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============== 05 · SQLITE ============== -->
+<section class="chapter" id="schema">
+  <div class="chapter-head">
+    <div class="chapter-num">05</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER FIVE · 数据长啥样</div>
+    <h2 class="chapter-title">SQLite <em>五张表</em></h2>
+    <p class="chapter-lede">一个 daemon 进程、一个 .db 文件、五张表。schema 变动遵循"只加不删"的兼容原则。</p>
+  </div>
+
+  <div class="prose">
+
+    <p>所有历史都落在 <code>~/.tokenmeter/data/tokenmeter.db</code>，用 modernc 的纯 Go SQLite 驱动。5 张表，职责分明：</p>
+
+    <div class="rt-grid">
+      <div class="rt-card">
+        <div class="rt-icon">§</div>
+        <h5>sessions</h5>
+        <div class="role">会话</div>
+        <p><code>session_id PK</code> · <code>platform</code> · <code>start_time</code> · <code>status</code> · <code>total_input_tokens</code> · <code>total_output_tokens</code> · <code>total_cost_usd</code></p>
+      </div>
+      <div class="rt-card">
+        <div class="rt-icon">§</div>
+        <h5>agents</h5>
+        <div class="role">Agent 实例</div>
+        <p><code>agent_id PK</code> · <code>session_id FK</code> · <code>parent_agent_id</code> · <code>role</code> · <code>status</code>。subagent 靠 <code>parent_agent_id</code> 形成树。</p>
+      </div>
+      <div class="rt-card">
+        <div class="rt-icon">§</div>
+        <h5>tool_calls</h5>
+        <div class="role">工具调用</div>
+        <p><code>call_id PK</code> · <code>agent_id / session_id FK</code> · <code>tool_name</code> · <code>params_summary</code> · <code>result_summary</code> · <code>duration_ms</code> · <code>status</code></p>
+      </div>
+      <div class="rt-card">
+        <div class="rt-icon">§</div>
+        <h5>token_usage</h5>
+        <div class="role">Token 记录</div>
+        <p><code>id AUTOINCREMENT</code> · <code>agent_id / session_id FK</code> · <code>input_tokens</code> · <code>output_tokens</code> · <code>model</code> · <code>cost_usd</code>。source_id 唯一索引防重。</p>
+      </div>
+      <div class="rt-card">
+        <div class="rt-icon">§</div>
+        <h5>file_changes</h5>
+        <div class="role">文件变更</div>
+        <p><code>id AUTOINCREMENT</code> · <code>session_id FK</code> · <code>file_path</code> · <code>change_type</code></p>
+      </div>
+    </div>
+
+    <h3>Schema 变更原则</h3>
+
+    <p><code>internal/storage/db.go</code> 里的 <code>migrate()</code> 函数<b>只用两种动作</b>：</p>
+
+    <ul>
+      <li><code>CREATE TABLE IF NOT EXISTS</code> 建新表</li>
+      <li><code>addColumnIfMissing()</code> 幂等加新列</li>
+    </ul>
+
+    <p>不允许删列、重命名列。老版本 TokenMeter 的数据库升级到新版本必须能直接打开用。这条纪律让 TokenMeter 敢做"零停机自升级"。</p>
+
+    <div class="callout warn">
+      <div class="label">时间字段约定</div>
+      <p>SQLite 存时间统一用 <code>TEXT</code> + RFC3339 格式，读的时候用 <code>parseTime()</code>。不用 UNIX 时间戳——跨平台调试时人眼可读更重要。</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============== 06 · TUI ============== -->
+<section class="chapter" id="tui">
+  <div class="chapter-head">
+    <div class="chapter-num">06</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER SIX · 终端面板</div>
+    <h2 class="chapter-title">TUI <em>四视图</em></h2>
+    <p class="chapter-lede">Bubbletea 做底、每 2 秒轮询 + 实时事件推送。Tab 键切换，j/k 上下移，<code>/</code> 搜索。</p>
+  </div>
+
+  <div class="prose">
+
+    <table class="clean">
+      <thead>
+        <tr>
+          <th style="width: 140px;">视图</th>
+          <th>内容</th>
+          <th style="width: 220px;">数据来源</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Dashboard</td>
+          <td>会话列表（费用、上下文占用、状态、标签）；顶部汇总栏支持 <code>t</code> 切换今日/本周/本月/全部</td>
+          <td><code>db.ListSessions()</code></td>
+        </tr>
+        <tr>
+          <td>Messages</td>
+          <td>从 Claude / Codex JSONL 提取的用户对话消息；<code>/</code> 全文搜索</td>
+          <td><code>collector.ReadUserMessages()</code></td>
+        </tr>
+        <tr>
+          <td>Tool Calls</td>
+          <td>当前会话的工具调用流；Enter 展开查看参数与结果</td>
+          <td><code>db.ListToolCalls(session, 500)</code></td>
+        </tr>
+        <tr>
+          <td>Stats</td>
+          <td>7 天费用柱状图、工具调用统计、Agent 分布、文件变更汇总</td>
+          <td>多张表聚合</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>刷新机制：轮询 + 推送</h3>
+
+    <p>TUI 每 2 秒跑一次 <code>tickCmd</code> 主动查库（兜底），同时订阅 daemon 的实时事件（<code>listenEvents</code>）——有新 hook 事件一到就立刻刷屏。两条路互为保底。</p>
+
+    <div class="callout analogy">
+      <div class="label">类比 · 车站到站显示屏</div>
+      <p>显示屏既接收调度中心的实时推送（新车进站立刻改），又每 30 秒自己拉一次全表（防推送丢包）。TUI 的 <code>tick + listenEvents</code> 是同一套思路——实时但不依赖实时。</p>
+    </div>
+
+    <h3>几个贴心细节</h3>
+
+    <ul>
+      <li><b>gitBranch 作显示名</b>：原始 session UUID 太丑；优先用 JSONL 顶层的 <code>gitBranch</code>，其次 <code>filepath.Base(cwd)</code>，最后才是 UUID</li>
+      <li><b>跨视图切会话</b>：<code>[</code> / <code>]</code> 在任何 tab 都能切上一个/下一个 session</li>
+      <li><b>Copy 恢复命令</b>：<code>c</code> 键把当前会话的恢复命令拷到剪贴板</li>
+      <li><b>展开详情不丢</b>：<code>expandedCalls</code> map 按 call_id 持久化，刷新后仍保留哪些调用是展开的</li>
+    </ul>
+
+    <h4>快捷键节选</h4>
+
+    <div class="check-grid">
+      <div class="check-item"><span class="idx">01</span><div><div class="label">Tab / Shift+Tab</div><div class="hint">切换视图</div></div></div>
+      <div class="check-item"><span class="idx">02</span><div><div class="label">j / k</div><div class="hint">上下导航</div></div></div>
+      <div class="check-item"><span class="idx">03</span><div><div class="label">G</div><div class="hint">跳到底部</div></div></div>
+      <div class="check-item"><span class="idx">04</span><div><div class="label">Enter</div><div class="hint">选择 / 展开</div></div></div>
+      <div class="check-item"><span class="idx">05</span><div><div class="label">[ / ]</div><div class="hint">切会话</div></div></div>
+      <div class="check-item"><span class="idx">06</span><div><div class="label">/</div><div class="hint">过滤当前列表</div></div></div>
+      <div class="check-item"><span class="idx">07</span><div><div class="label">t</div><div class="hint">切时间范围</div></div></div>
+      <div class="check-item"><span class="idx">08</span><div><div class="label">p</div><div class="hint">切平台（全部/Claude/Codex）</div></div></div>
+      <div class="check-item"><span class="idx">09</span><div><div class="label">s</div><div class="hint">切排序（最近/费用）</div></div></div>
+      <div class="check-item"><span class="idx">10</span><div><div class="label">c</div><div class="hint">复制恢复命令</div></div></div>
+      <div class="check-item"><span class="idx">11</span><div><div class="label">Esc</div><div class="hint">清过滤</div></div></div>
+      <div class="check-item"><span class="idx">12</span><div><div class="label">q</div><div class="hint">退出</div></div></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============== 07 · WEB ============== -->
+<section class="chapter" id="web">
+  <div class="chapter-head">
+    <div class="chapter-num">07</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER SEVEN · 浏览器版本</div>
+    <h2 class="chapter-title">当 TUI <em>不够用</em></h2>
+    <p class="chapter-lede">想看图表、想分享给不用终端的同事、想在更大屏幕上翻旧会话——启 <code>tm web</code> 就好。</p>
+  </div>
+
+  <div class="prose">
+
+    <p><code>tm web</code> 启动一个独立的 HTTP 服务（默认 <code>:8370</code>），提供：</p>
+
+    <ul>
+      <li><b>费用面积图</b>——Canvas 绘制，hover 显示详情，点击某一天按天筛选会话</li>
+      <li><b>模型占比 + 工具排行</b>——同一屏看清钱花哪了</li>
+      <li><b>会话列表</b>——搜索、排序、按费用色标</li>
+      <li><b>会话详情</b>——对话消息、工具时间线、文件变更、Agent 层级</li>
+      <li><b>深色 / 浅色主题</b>——自动跟随系统偏好</li>
+      <li><b>键盘导航</b>——<code>j</code>/<code>k</code> 选、<code>Enter</code> 开、<code>/</code> 搜、<code>←</code>/<code>→</code> 切、<code>Esc</code> 返回、<code>?</code> 帮助</li>
+    </ul>
+
+    <h3>架构上：独立的进程</h3>
+
+    <p>Web 不是 TUI 的扩展，是<b>独立进程</b>。它直接读 SQLite（与 daemon 共用同一个 .db 文件），对外暴露 REST API + 嵌入式 SPA（Go embed 打包，不依赖外部静态目录）。</p>
+
+    <div class="callout key">
+      <div class="label">解耦设计</div>
+      <p>TUI 和 Web 互不知道对方存在。都读同一个 SQLite，都订阅同一套 daemon 事件。开一个不影响另一个。也可以只开 Web、不开 TUI。</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============== 08 · IDENTITY ============== -->
+<section class="chapter" id="identity">
+  <div class="chapter-head">
+    <div class="chapter-num">08</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER EIGHT · 不能数重</div>
+    <h2 class="chapter-title">Token <em>只算一次</em></h2>
+    <p class="chapter-lede">daemon 重启、日志被重新扫描、Codex 轮询重叠——每个事件都可能被处理多次。去重是默默的地板工程。</p>
+  </div>
+
+  <div class="prose">
+
+    <h3>三种身份键</h3>
+
+    <div class="rt-grid">
+      <div class="rt-card">
+        <div class="rt-icon">§</div>
+        <h5>tool_use_id</h5>
+        <div class="role">Claude 工具调用</div>
+        <p>Claude Code 自己分配的全局唯一 id。Pre/Post 对齐、重复事件去重都靠它。</p>
+      </div>
+      <div class="rt-card">
+        <div class="rt-icon">§</div>
+        <h5>call_id</h5>
+        <div class="role">Codex 工具调用</div>
+        <p>Codex JSONL 里的 function call id。作用同 <code>tool_use_id</code>。</p>
+      </div>
+      <div class="rt-card">
+        <div class="rt-icon">§</div>
+        <h5>source_id</h5>
+        <div class="role">Token 记录唯一索引</div>
+        <p><code>token_usage</code> 表上的唯一索引。<code>INSERT OR IGNORE</code> 保证同一条 JSONL 行扫多遍也只记一次。</p>
+      </div>
+    </div>
+
+    <h3>三种典型重复场景</h3>
+
+    <ol>
+      <li><b>daemon 重启</b>——重启后 <code>ClaudeLogWatcher</code> 从头扫 JSONL。没有 <code>source_id</code> 唯一索引，token 会被重新累加一遍。</li>
+      <li><b>Codex 轮询覆盖</b>——文件还在写，上次轮询读了 80%，这次读了 100%。内存 <code>lastTokenUsage</code> map 记录"这个 key 上次用量是 X"，避免重复计费。</li>
+      <li><b>Stop hook 重试</b>——Claude 有时会发两次 Stop。<code>MarkPendingToolCallsInterrupted</code> 幂等，跑几次都一样。</li>
+    </ol>
+
+    <div class="callout analogy">
+      <div class="label">类比 · 会计冲销</div>
+      <p>会计每月对账，同一笔钱可能在三张账单上出现。要么靠唯一凭证号对齐、要么靠"已入账"标记。TokenMeter 的 <code>source_id</code> 唯一索引是凭证号；<code>lastTokenUsage</code> map 是"已入账"标记。两种都用——保险一点。</p>
+    </div>
+
+    <h3>僵尸会话的处理</h3>
+
+    <p>有些会话因为 Claude 进程被 kill、机器休眠等原因没走 <code>SessionEnd</code>，数据库里就挂着 <code>status=running</code>。daemon 每次启动会跑 <code>MarkStaleSessionsEnded(2h)</code>——2 小时没更新的 running 会话，标记为 ended。</p>
+
+  </div>
+</section>
+
+<!-- ============== 09 · COMMANDS ============== -->
+<section class="chapter" id="cmd">
+  <div class="chapter-head">
+    <div class="chapter-num">09</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER NINE · 常用命令</div>
+    <h2 class="chapter-title"><em>命令速查</em></h2>
+    <p class="chapter-lede">装好 TokenMeter 之后，90% 的时候只用三个命令。剩下 10% 是报告、清理、标签。</p>
+  </div>
+
+  <div class="prose">
+
+    <h4>每日三件套</h4>
+
+    <table class="clean">
+      <thead>
+        <tr>
+          <th style="width: 240px;">命令</th>
+          <th>做什么</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>tm setup</code></td><td>一次性：把 hook 注入 <code>~/.claude/settings.json</code></td></tr>
+        <tr><td><code>tm</code></td><td>启 TUI（自动拉起 daemon）</td></tr>
+        <tr><td><code>tm web</code></td><td>启浏览器 Dashboard，默认 <code>:8370</code></td></tr>
+      </tbody>
+    </table>
+
+    <h4>报告与清理</h4>
+
+    <table class="clean">
+      <thead>
+        <tr>
+          <th style="width: 240px;">命令</th>
+          <th>做什么</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>tm status</code></td><td>快速查看会话摘要</td></tr>
+        <tr><td><code>tm cost [today|week]</code></td><td>Token 用量与费用统计</td></tr>
+        <tr><td><code>tm report [session]</code></td><td>单会话详细文本报告</td></tr>
+        <tr><td><code>tm report --weekly</code></td><td>本周 Markdown 费用报告（按模型、按会话）</td></tr>
+        <tr><td><code>tm report --monthly</code></td><td>本月 Markdown 费用报告</td></tr>
+        <tr><td><code>tm tag &lt;id&gt; "备注"</code></td><td>给会话打标签；省略 text 则清除</td></tr>
+        <tr><td><code>tm clean [days]</code></td><td>清理 N 天前的历史（默认 7）</td></tr>
+      </tbody>
+    </table>
+
+    <h4>守护进程与卸载</h4>
+
+    <table class="clean">
+      <thead>
+        <tr>
+          <th style="width: 240px;">命令</th>
+          <th>做什么</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>tm daemon</code></td><td>只启 daemon，不开 TUI</td></tr>
+        <tr><td><code>tm uninstall</code></td><td>移除 hooks、停 daemon</td></tr>
+        <tr><td><code>rm -rf ~/.tokenmeter</code></td><td>删除所有数据</td></tr>
+        <tr><td><code>tm version</code></td><td>显示版本</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout key">
+      <div class="label">目录速查</div>
+      <p><code>~/.tokenmeter/data/tokenmeter.db</code> — SQLite 数据库<br><code>~/.tokenmeter/tokenmeter.sock</code> — Unix socket<br><code>~/.tokenmeter/daemon.pid</code> — PID 锁文件</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============== 10 · CLOSE ============== -->
+<section class="chapter" id="close">
+  <div class="chapter-head">
+    <div class="chapter-num">10</div>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER TEN · 设计哲学</div>
+    <h2 class="chapter-title">合上手册时<em>带走的</em></h2>
+    <p class="chapter-lede">TokenMeter 的形状是被几个不愿妥协的原则塑造的——这些原则决定了它是什么、以及它不是什么。</p>
+  </div>
+
+  <div class="prose">
+
+    <div class="principles">
+      <div class="principle">
+        <div class="pn">I</div>
+        <div>
+          <div class="pt">零配置 · 单二进制</div>
+          <div class="ps">装好就能用。<code>tm setup</code> + <code>tm</code> 两条命令到位。纯 Go，没有外部 runtime、没有数据库服务、没有 Python 环境。</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="pn">II</div>
+        <div>
+          <div class="pt">统一事件 · 多平台一种形状</div>
+          <div class="ps">Claude / Codex 原生格式完全不同，到 daemon 这里都是 <code>Event</code>。未来加 Cursor、Cline 也不用改 daemon 和 storage。</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="pn">III</div>
+        <div>
+          <div class="pt">采集与展示解耦</div>
+          <div class="ps">daemon 默默跑着，开不开 TUI 不影响数据采集。TUI 和 Web 是两个独立进程，都读同一个 SQLite。</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="pn">IV</div>
+        <div>
+          <div class="pt">幂等地板工程</div>
+          <div class="ps">daemon 重启、日志重扫、Codex 轮询重叠——系统默认假设会发生。<code>source_id</code> 唯一索引、<code>INSERT OR IGNORE</code>、内存去重 map 三层保护。</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="pn">V</div>
+        <div>
+          <div class="pt">Schema 只加不删</div>
+          <div class="ps">老版本的 .db 文件永远能在新版本 TokenMeter 里打开。升级不丢数据，也不要求用户手动迁移。</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="pn">VI</div>
+        <div>
+          <div class="pt">实时但不依赖实时</div>
+          <div class="ps">TUI 既订阅 daemon 事件（实时），又每 2 秒轮询一次 SQLite（兜底）。推送丢了也不会漏数据。</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="pn">VII</div>
+        <div>
+          <div class="pt">本地优先 · 数据就在 ~/.tokenmeter</div>
+          <div class="ps">没有云、没有遥测、没有上报。所有数据都在你本地 SQLite 里，想删就 <code>rm -rf</code> 一键清空。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout key" style="margin-top: 3em;">
+      <div class="label">一句话版本</div>
+      <p>TokenMeter 是给 AI 编码 agent 装的<b>本地仪表盘</b>——一个 Go 写的 daemon 接住 Claude Code 和 Codex 的所有信号，统一成事件落进 SQLite，再用 TUI 和 Web 两套界面回放。零配置、幂等、本地、解耦。</p>
+    </div>
+
+  </div>
+</section>
+
+<footer class="end">
+  <div class="signature">— fin —</div>
+  <p>本手册是 TokenMeter 项目的叙事版图解，不是 README。</p>
+  <p>细节请直接看 <a href="../README.md">README.md</a> · <a href="../CLAUDE.md">CLAUDE.md</a> · <a href="architecture.html">architecture.html</a></p>
+  <p style="margin-top:18px; opacity:0.7;">FIELD GUIDE v1 · 2026-04-24 · TokenMeter</p>
+</footer>
+
+</main>
+
+<script>
+const progress = document.getElementById('progress');
+document.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const scrolled = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+  progress.style.width = scrolled + '%';
+}, { passive: true });
+
+const sections = document.querySelectorAll('section.chapter, section.cover');
+const tocLinks = document.querySelectorAll('.toc a');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const id = entry.target.id;
+      tocLinks.forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+      });
+    }
+  });
+}, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

@@ -32,7 +32,7 @@ func TestRunExportProducesCSV(t *testing.T) {
 	home := t.TempDir()
 	db := openHomeDB(t, home)
 	now := time.Now().Add(-time.Minute)
-	seedCLISession(t, db, "export-csv", event.PlatformClaude, "/tmp/agmon", "main", now, 120, 34, 1.25)
+	seedCLISession(t, db, "export-csv", event.PlatformClaude, "/tmp/tokenmeter", "main", now, 120, 34, 1.25)
 
 	withArgs(t, []string{"tokenmeter", "export", "--range", "all", "--format", "csv"})
 	out := captureStdout(t, func() {
@@ -55,7 +55,7 @@ func TestRunExportProducesJSON(t *testing.T) {
 	home := t.TempDir()
 	db := openHomeDB(t, home)
 	now := time.Now().Add(-time.Minute)
-	seedCLISession(t, db, "export-json", event.PlatformCodex, "/tmp/agmon", "feature", now, 500, 60, 2.75)
+	seedCLISession(t, db, "export-json", event.PlatformCodex, "/tmp/tokenmeter", "feature", now, 500, 60, 2.75)
 
 	withArgs(t, []string{"tokenmeter", "export", "--range", "all", "--format", "json"})
 	out := captureStdout(t, func() {
@@ -107,8 +107,8 @@ func TestRunCompareTextFormat(t *testing.T) {
 	home := t.TempDir()
 	db := openHomeDB(t, home)
 	now := time.Now().Add(-time.Hour)
-	seedCLISession(t, db, "compare-a", event.PlatformClaude, "/tmp/agmon", "main", now, 1000, 200, 42.50)
-	seedCLISession(t, db, "compare-b", event.PlatformCodex, "/tmp/agmon", "feature", now.Add(time.Minute), 1500, 500, 67.20)
+	seedCLISession(t, db, "compare-a", event.PlatformClaude, "/tmp/tokenmeter", "main", now, 1000, 200, 42.50)
+	seedCLISession(t, db, "compare-b", event.PlatformCodex, "/tmp/tokenmeter", "feature", now.Add(time.Minute), 1500, 500, 67.20)
 	for i := 0; i < 2; i++ {
 		if _, err := db.InsertToolCallStart("a-edit-"+string(rune('0'+i)), "agent-compare-a", "compare-a", "Edit", "{}", now); err != nil {
 			t.Fatalf("insert a edit: %v", err)
@@ -172,7 +172,7 @@ func TestRunSearchOutputsHits(t *testing.T) {
 	home := t.TempDir()
 	db := openHomeDB(t, home)
 	now := time.Now().Add(-time.Minute)
-	seedCLISession(t, db, "search-cli", event.PlatformClaude, "/tmp/agmon", "main", now, 1, 1, 0.01)
+	seedCLISession(t, db, "search-cli", event.PlatformClaude, "/tmp/tokenmeter", "main", now, 1, 1, 0.01)
 	if _, err := db.InsertToolCallStart("search-param", "agent-search-cli", "search-cli", "Edit", `{"file_path":"needle.go"}`, now); err != nil {
 		t.Fatalf("insert tool param: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestRunExportWritesOutFile(t *testing.T) {
 	home := t.TempDir()
 	db := openHomeDB(t, home)
 	now := time.Now().Add(-time.Minute)
-	seedCLISession(t, db, "export-file", event.PlatformClaude, "/tmp/agmon", "main", now, 10, 5, 0.5)
+	seedCLISession(t, db, "export-file", event.PlatformClaude, "/tmp/tokenmeter", "main", now, 10, 5, 0.5)
 	outPath := filepath.Join(t.TempDir(), "export.csv")
 
 	withArgs(t, []string{"tokenmeter", "export", "--range", "all", "--format", "csv", "--out", outPath})

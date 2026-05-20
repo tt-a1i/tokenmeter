@@ -29,7 +29,7 @@ func TestRunTopOnceProducesSnapshot(t *testing.T) {
 			t.Fatalf("top snapshot missing %q:\n%s", want, text)
 		}
 	}
-	if !strings.Contains(text, "agmon/main") || !strings.Contains(text, "Edit") || !strings.Contains(text, "claude-sonnet-4-6") {
+	if !strings.Contains(text, "tokenmeter/main") || !strings.Contains(text, "Edit") || !strings.Contains(text, "claude-sonnet-4-6") {
 		t.Fatalf("top snapshot missing seeded data:\n%s", text)
 	}
 }
@@ -111,7 +111,7 @@ func seedTopSnapshot(t *testing.T, db *storage.DB) {
 	// regardless of when the wall clock fires (previously now-3h / now-1h
 	// would slip into "yesterday" if invoked shortly after local midnight,
 	// breaking the "Top tools today" and "Models" sections).
-	seedTopSession(t, db, "top-claude", event.PlatformClaude, "/work/agmon", "main", "claude-sonnet-4-6", 12.34, now.Add(-2*time.Minute))
+	seedTopSession(t, db, "top-claude", event.PlatformClaude, "/work/tokenmeter", "main", "claude-sonnet-4-6", 12.34, now.Add(-2*time.Minute))
 	seedTopSession(t, db, "top-codex", event.PlatformCodex, "/work/web", "feature", "gpt-5.5", 8.90, now.Add(-time.Minute))
 }
 

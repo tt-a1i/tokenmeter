@@ -253,7 +253,7 @@ func TestRunShareOutputsMarkdownRecap(t *testing.T) {
 	if err := db.UpsertSession("share-session", event.PlatformCodex, now); err != nil {
 		t.Fatalf("upsert session: %v", err)
 	}
-	if err := db.UpdateSessionMeta("share-session", "/tmp/agmon", "main"); err != nil {
+	if err := db.UpdateSessionMeta("share-session", "/tmp/tokenmeter", "main"); err != nil {
 		t.Fatalf("update meta: %v", err)
 	}
 	if err := db.UpsertAgent("agent-1", "share-session", "", "main", now); err != nil {
@@ -279,7 +279,7 @@ func TestRunShareOutputsMarkdownRecap(t *testing.T) {
 	out := captureStdout(t, runShare)
 
 	for _, want := range []string{
-		"# TokenMeter Session: agmon/main",
+		"# TokenMeter Session: tokenmeter/main",
 		"- Platform: codex",
 		"- Cost: $0.2500",
 		"- Tokens: 1.2k in / 300 out / 1.5k total",

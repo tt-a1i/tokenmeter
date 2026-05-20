@@ -29,8 +29,8 @@ func TestAnalyzeAggregatesAcrossSessions(t *testing.T) {
 	from := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	to := from.AddDate(0, 0, 7)
 
-	seedAnalysisSession(t, db, "claude-main", event.PlatformClaude, "/repo/agmon", "main", from.Add(2*time.Hour), "sonnet", 10, "src/main.go", event.StatusSuccess)
-	seedAnalysisSession(t, db, "codex-feature", event.PlatformCodex, "/repo/agmon", "feature", from.AddDate(0, 0, 1).Add(3*time.Hour), "gpt-5.5", 5, "README.md", event.StatusFail)
+	seedAnalysisSession(t, db, "claude-main", event.PlatformClaude, "/repo/tokenmeter", "main", from.Add(2*time.Hour), "sonnet", 10, "src/main.go", event.StatusSuccess)
+	seedAnalysisSession(t, db, "codex-feature", event.PlatformCodex, "/repo/tokenmeter", "feature", from.AddDate(0, 0, 1).Add(3*time.Hour), "gpt-5.5", 5, "README.md", event.StatusFail)
 	if err := db.UpsertSession("outside", event.PlatformClaude, to.Add(time.Hour)); err != nil {
 		t.Fatalf("upsert outside: %v", err)
 	}

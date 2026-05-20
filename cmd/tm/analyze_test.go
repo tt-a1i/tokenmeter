@@ -31,7 +31,7 @@ func TestRunAnalyzeTextFormat(t *testing.T) {
 		"Files touched",
 		"Activity heatmap",
 		"Total:",
-		"agmon/main",
+		"tokenmeter/main",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("analyze output missing %q:\n%s", want, out)
@@ -82,7 +82,7 @@ func seedAnalyzeCLISession(t *testing.T, db interface {
 	if err := db.UpsertSession(sessionID, platform, ts); err != nil {
 		t.Fatalf("upsert session: %v", err)
 	}
-	if err := db.UpdateSessionMeta(sessionID, "/repo/agmon", "main"); err != nil {
+	if err := db.UpdateSessionMeta(sessionID, "/repo/tokenmeter", "main"); err != nil {
 		t.Fatalf("update meta: %v", err)
 	}
 	agentID := "agent-" + sessionID

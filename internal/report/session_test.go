@@ -19,7 +19,7 @@ func TestSessionShareMarkdownIncludesGrowthSummary(t *testing.T) {
 		TotalInputTokens:  12500,
 		TotalOutputTokens: 3400,
 		TotalCostUSD:      1.25,
-		CWD:               "/Users/admin/code/agmon",
+		CWD:               "/Users/admin/code/tokenmeter",
 		GitBranch:         "main",
 		Model:             "gpt-5.5",
 		Tag:               "release polish",
@@ -36,7 +36,7 @@ func TestSessionShareMarkdownIncludesGrowthSummary(t *testing.T) {
 	got := SessionShareMarkdown(session, tools, files, end)
 
 	for _, want := range []string{
-		"# TokenMeter Session: agmon/main",
+		"# TokenMeter Session: tokenmeter/main",
 		"- Platform: codex",
 		"- Model: gpt-5.5",
 		"- Cost: $1.25",
