@@ -6,6 +6,8 @@ import (
 	"io"
 	"sort"
 	"text/tabwriter"
+
+	"github.com/tt-a1i/tokenmeter/internal/pricing"
 )
 
 type SessionArgs struct {
@@ -26,6 +28,8 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 	if err != nil {
 		return err
 	}
+	entries = applyPricingMode(entries, pricing.ParseMode(a.Shared.Mode))
+
 	groups := map[string]*aggGroup{}
 	for _, e := range entries {
 		if a.SessionID != "" && e.SessionID != a.SessionID {
@@ -33,23 +37,44 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 		}
 		g, ok := groups[e.SessionID]
 		if !ok {
-			g = &aggGroup{seen: map[string]struct{}{}}
+			g = &aggGroup{
+				seen:     map[string]struct{}{},
+				perModel: map[string]*modelStats{},
+			}
 			groups[e.SessionID] = g
 		}
 		g.tokens += e.InputTokens + e.OutputTokens + e.CacheCreationInputTokens + e.CacheReadInputTokens
 		g.cost += e.CostUSD
+		g.input += e.InputTokens
+		g.output += e.OutputTokens
+		g.cacheCreate += e.CacheCreationInputTokens
+		g.cacheRead += e.CacheReadInputTokens
 		if e.Model != "" {
 			if _, exists := g.seen[e.Model]; !exists {
 				g.models = append(g.models, e.Model)
 				g.seen[e.Model] = struct{}{}
 			}
+			ms, ok := g.perModel[e.Model]
+			if !ok {
+				ms = &modelStats{}
+				g.perModel[e.Model] = ms
+			}
+			ms.Input += e.InputTokens
+			ms.Output += e.OutputTokens
+			ms.CacheCreate += e.CacheCreationInputTokens
+			ms.CacheRead += e.CacheReadInputTokens
+			ms.Cost += e.CostUSD
 		}
 	}
 	keys := make([]string, 0, len(groups))
 	for k := range groups {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	if a.Shared.Order == "desc" {
+		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+	} else {
+		sort.Strings(keys)
+	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "SESSION\tMODELS\tTOKENS\tCOST")
 	for _, k := range keys {
