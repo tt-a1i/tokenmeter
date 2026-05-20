@@ -60,6 +60,15 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Verify pricing snapshot is in sync
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          go generate ./internal/pricing/...
+          if ! git diff --exit-code internal/pricing/litellm-snapshot.json; then
+            echo "::warning::pricing snapshot drifted from upstream; will be refreshed by Monday's workflow"
+          fi
+
       - name: Test
         run: go test ./... -race -count=1 -timeout=600s
 
