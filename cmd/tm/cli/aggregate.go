@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/tt-a1i/tokenmeter/internal/pricing"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
 
@@ -28,6 +29,10 @@ type AggregateLoader interface {
 	ListUsageForBlocksFiltered(ctx context.Context, since, until time.Time, workspace string) ([]storage.TokenUsageEntry, error)
 }
 
+// pricingMap is loaded once per process; LoadEmbedded panics on malformed
+// snapshot, which the test suite would surface immediately.
+var pricingMap = pricing.LoadEmbedded()
+
 func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader AggregateLoader) error {
 	since, err := parseDateFlag(a.Shared.Since)
 	if err != nil {
@@ -41,12 +46,27 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 	if err != nil {
 		return err
 	}
-	groups := groupBy(entries, a.Bucket)
+	entries = applyPricingMode(entries, pricing.ParseMode(a.Shared.Mode))
+
+	loc := time.UTC
+	if a.Shared.Timezone != "" {
+		parsed, err := time.LoadLocation(a.Shared.Timezone)
+		if err != nil {
+			return fmt.Errorf("invalid timezone %q: %w", a.Shared.Timezone, err)
+		}
+		loc = parsed
+	}
+
+	groups := groupBy(entries, a.Bucket, loc)
 	keys := make([]string, 0, len(groups))
 	for k := range groups {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	if a.Shared.Order == "desc" {
+		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+	} else {
+		sort.Strings(keys)
+	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "DATE\tMODELS\tTOKENS\tCOST")
 	for _, k := range keys {
@@ -56,29 +76,55 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 	return tw.Flush()
 }
 
-type aggGroup struct {
-	tokens int64
-	cost   float64
-	models []string
-	seen   map[string]struct{}
+// modelStats tracks per-model token + cost subtotals inside one aggGroup so
+// the render layer (Task 11) can emit Breakdown rows when --breakdown is set.
+type modelStats struct {
+	Input, Output, CacheCreate, CacheRead int64
+	Cost                                  float64
 }
 
-func groupBy(entries []storage.TokenUsageEntry, b Bucket) map[string]*aggGroup {
+type aggGroup struct {
+	tokens                                int64
+	cost                                  float64
+	models                                []string
+	seen                                  map[string]struct{}
+	input, output, cacheCreate, cacheRead int64
+	perModel                              map[string]*modelStats
+}
+
+func groupBy(entries []storage.TokenUsageEntry, b Bucket, loc *time.Location) map[string]*aggGroup {
 	out := map[string]*aggGroup{}
 	for _, e := range entries {
-		key := bucketKey(e.Timestamp, b)
+		key := bucketKey(e.Timestamp.In(loc), b)
 		g, ok := out[key]
 		if !ok {
-			g = &aggGroup{seen: map[string]struct{}{}}
+			g = &aggGroup{
+				seen:     map[string]struct{}{},
+				perModel: map[string]*modelStats{},
+			}
 			out[key] = g
 		}
 		g.tokens += e.InputTokens + e.OutputTokens + e.CacheCreationInputTokens + e.CacheReadInputTokens
 		g.cost += e.CostUSD
+		g.input += e.InputTokens
+		g.output += e.OutputTokens
+		g.cacheCreate += e.CacheCreationInputTokens
+		g.cacheRead += e.CacheReadInputTokens
 		if e.Model != "" {
 			if _, exists := g.seen[e.Model]; !exists {
 				g.models = append(g.models, e.Model)
 				g.seen[e.Model] = struct{}{}
 			}
+			ms, ok := g.perModel[e.Model]
+			if !ok {
+				ms = &modelStats{}
+				g.perModel[e.Model] = ms
+			}
+			ms.Input += e.InputTokens
+			ms.Output += e.OutputTokens
+			ms.CacheCreate += e.CacheCreationInputTokens
+			ms.CacheRead += e.CacheReadInputTokens
+			ms.Cost += e.CostUSD
 		}
 	}
 	return out
@@ -107,4 +153,39 @@ func parseDateFlag(s string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("invalid date %q (want YYYYMMDD): %w", s, err)
 	}
 	return t, nil
+}
+
+// applyPricingMode rewrites each entry's CostUSD according to mode:
+//   - ModeDisplay: leaves CostUSD untouched (trust the source row).
+//   - ModeCalculate: recomputes from tokens × pricing for the resolved model.
+//   - ModeAuto: when CostUSD > 0 keeps it; when it's zero, falls back to
+//     calculate so missing cost columns (e.g. Codex) still surface a value.
+//
+// internal/pricing has no storage import on purpose; the per-entry bridge
+// lives here so we don't pull storage into the pricing package.
+func applyPricingMode(entries []storage.TokenUsageEntry, mode pricing.Mode) []storage.TokenUsageEntry {
+	if mode == pricing.ModeDisplay {
+		return entries
+	}
+	out := make([]storage.TokenUsageEntry, len(entries))
+	for i, e := range entries {
+		out[i] = e
+		if mode == pricing.ModeAuto && e.CostUSD > 0 {
+			continue
+		}
+		if e.Model == "" {
+			continue
+		}
+		p, ok := pricingMap.Resolve(e.Model)
+		if !ok {
+			continue
+		}
+		out[i].CostUSD = pricing.CalculateCost(p, pricing.Usage{
+			Input:       e.InputTokens,
+			Output:      e.OutputTokens,
+			CacheCreate: e.CacheCreationInputTokens,
+			CacheRead:   e.CacheReadInputTokens,
+		}, pricing.SpeedStandard)
+	}
+	return out
 }
