@@ -10,10 +10,11 @@ func TestPrintHelpHasAllSections(t *testing.T) {
 	for _, want := range []string{
 		"▎Setup & installation",
 		"▎Run modes",
-		"▎Daily commands",
+		"▎Usage summary (ccusage-aligned)",
 		"▎Analysis",
 		"▎Maintenance",
 		"▎Configuration",
+		"▎Deprecated (removed in v2.0)",
 		"▎Examples",
 	} {
 		if !strings.Contains(out, want) {

@@ -222,29 +222,6 @@ func hasTokenMeterEmit(commands []string) bool {
 	return false
 }
 
-func TestRunReportFindsHiddenSessionByID(t *testing.T) {
-	home := t.TempDir()
-	db := openHomeDB(t, home)
-	now := time.Now().UTC().Add(-2 * time.Hour)
-
-	if err := db.UpsertSession("hidden-session", event.PlatformClaude, now); err != nil {
-		t.Fatalf("upsert session: %v", err)
-	}
-	if err := db.EndSession("hidden-session", now.Add(time.Minute)); err != nil {
-		t.Fatalf("end session: %v", err)
-	}
-
-	withArgs(t, []string{"tokenmeter", "report", "hidden-session"})
-	out := captureStdout(t, runReport)
-
-	if !strings.Contains(out, "ID:       hidden-session") {
-		t.Fatalf("expected report to include hidden session id, got %q", out)
-	}
-	if !strings.Contains(out, "Status:   ended") {
-		t.Fatalf("expected ended status in report, got %q", out)
-	}
-}
-
 func TestRunShareOutputsMarkdownRecap(t *testing.T) {
 	home := t.TempDir()
 	db := openHomeDB(t, home)
@@ -291,35 +268,6 @@ func TestRunShareOutputsMarkdownRecap(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("share output missing %q:\n%s", want, out)
 		}
-	}
-}
-
-func TestRunCostOutputsTotalsForRequestedPeriod(t *testing.T) {
-	home := t.TempDir()
-	db := openHomeDB(t, home)
-	now := time.Now().UTC()
-
-	if err := db.UpsertSession("cost-session", event.PlatformClaude, now); err != nil {
-		t.Fatalf("upsert session: %v", err)
-	}
-	if err := db.InsertTokenUsage("agent-1", "cost-session", 1200, 300, 0, 0, "sonnet", 2.5, now, "cost-src"); err != nil {
-		t.Fatalf("insert token usage: %v", err)
-	}
-	if err := db.UpdateSessionTokens("cost-session"); err != nil {
-		t.Fatalf("update session tokens: %v", err)
-	}
-
-	withArgs(t, []string{"tokenmeter", "cost", "all"})
-	out := captureStdout(t, runCost)
-
-	if !strings.Contains(out, "All time:") {
-		t.Fatalf("expected all-time label, got %q", out)
-	}
-	if !strings.Contains(out, "1.2k in") || !strings.Contains(out, "300 out") {
-		t.Fatalf("expected token totals in output, got %q", out)
-	}
-	if !strings.Contains(out, "$2.5000") {
-		t.Fatalf("expected cost output, got %q", out)
 	}
 }
 

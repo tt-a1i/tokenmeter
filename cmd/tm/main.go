@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tt-a1i/tokenmeter/cmd/tm/cli"
 	"github.com/tt-a1i/tokenmeter/internal/appdir"
 	"github.com/tt-a1i/tokenmeter/internal/collector"
@@ -22,7 +21,6 @@ import (
 	"github.com/tt-a1i/tokenmeter/internal/event"
 	"github.com/tt-a1i/tokenmeter/internal/report"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
-	"github.com/tt-a1i/tokenmeter/internal/tui"
 	"github.com/tt-a1i/tokenmeter/internal/web"
 )
 
@@ -72,33 +70,6 @@ func (p daemonMetricsProvider) BudgetUsageAll() ([]web.BudgetMetric, error) {
 	return result, nil
 }
 
-func defaultLogPath() string {
-	return appdir.PathFor("tokenmeter.log", "agmon.log")
-}
-
-func configureTUILogging(logPath string) (func() error, error) {
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		return nil, fmt.Errorf("create log dir: %w", err)
-	}
-
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return nil, fmt.Errorf("open log file: %w", err)
-	}
-
-	prevWriter := log.Writer()
-	prevFlags := log.Flags()
-	prevPrefix := log.Prefix()
-	log.SetOutput(f)
-
-	return func() error {
-		log.SetOutput(prevWriter)
-		log.SetFlags(prevFlags)
-		log.SetPrefix(prevPrefix)
-		return f.Close()
-	}, nil
-}
-
 func mustOpenDB() *storage.DB {
 	db, err := storage.Open(storage.DefaultDBPath())
 	if err != nil {
@@ -107,95 +78,9 @@ func mustOpenDB() *storage.DB {
 	return db
 }
 
-type tuiOptions struct {
-	workspace       string
-	workspaceFilter bool
-}
-
-func isTUIFlag(arg string) bool {
-	return arg == "--all" || arg == "--workspace" || strings.HasPrefix(arg, "--workspace=")
-}
-
-func parseTUIOptions(args []string, getwd func() (string, error)) (tuiOptions, error) {
-	cwd, err := getwd()
-	if err != nil {
-		return tuiOptions{}, fmt.Errorf("get current workspace: %w", err)
-	}
-	workspace, err := cleanTUIWorkspace(cwd)
-	if err != nil {
-		return tuiOptions{}, err
-	}
-	opts := tuiOptions{
-		workspace:       workspace,
-		workspaceFilter: workspace != "",
-	}
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "--all":
-			opts.workspace = ""
-			opts.workspaceFilter = false
-		case arg == "--workspace":
-			if i+1 >= len(args) {
-				return opts, fmt.Errorf("--workspace requires a path")
-			}
-			i++
-			workspace, err := cleanTUIWorkspace(args[i])
-			if err != nil {
-				return opts, err
-			}
-			opts.workspace = workspace
-			opts.workspaceFilter = true
-		case strings.HasPrefix(arg, "--workspace="):
-			workspace, err := cleanTUIWorkspace(strings.TrimPrefix(arg, "--workspace="))
-			if err != nil {
-				return opts, err
-			}
-			opts.workspace = workspace
-			opts.workspaceFilter = true
-		default:
-			return opts, fmt.Errorf("unknown TUI option: %s", arg)
-		}
-	}
-	return opts, nil
-}
-
-func cleanTUIWorkspace(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", fmt.Errorf("workspace path cannot be empty")
-	}
-	if path == "~" || strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("resolve home directory: %w", err)
-		}
-		if path == "~" {
-			path = home
-		} else {
-			path = filepath.Join(home, strings.TrimPrefix(path, "~/"))
-		}
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("resolve workspace path: %w", err)
-	}
-	return filepath.Clean(abs), nil
-}
-
-func newTUIModel(db *storage.DB, tuiCh chan tui.EventMsg, opts tuiOptions) tui.Model {
-	m := tui.NewModel(db, tuiCh)
-	if opts.workspaceFilter && opts.workspace != "" {
-		m = m.WithWorkspace(opts.workspace)
-	}
-	return m
-}
-
 func main() {
-	if len(os.Args) < 2 || isTUIFlag(os.Args[1]) {
-		ensureHooksInstalled()
-		runTUI(os.Args[1:]...)
+	if len(os.Args) < 2 {
+		printHelp()
 		return
 	}
 
@@ -379,117 +264,6 @@ func latestOrRequestedSession(db *storage.DB, args []string) (storage.SessionRow
 		return storage.SessionRow{}, false
 	}
 	return sessions[0], true
-}
-
-func runTUI(args ...string) {
-	opts, err := parseTUIOptions(args, os.Getwd)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	db := mustOpenDB()
-	defer db.Close()
-
-	sockPath := daemon.DefaultSocketPath()
-
-	// If daemon already running, connect TUI only but still subscribe for real-time events.
-	if running, _ := daemon.IsRunning(); running {
-		tuiCh := make(chan tui.EventMsg, 256)
-		eventCh, closeFn, err := daemon.SubscribeRemote(sockPath)
-		if err != nil {
-			log.Printf("subscribe daemon events: %v", err)
-		} else {
-			defer closeFn()
-			go func() {
-				for range eventCh {
-					select {
-					case tuiCh <- tui.EventMsg{}:
-					default:
-					}
-				}
-			}()
-		}
-
-		m := newTUIModel(db, tuiCh, opts)
-		p := tea.NewProgram(m, tea.WithAltScreen())
-		go checkAndNotifyUpdate(p)
-		if _, err := p.Run(); err != nil {
-			log.Fatalf("tui error: %v", err)
-		}
-		return
-	}
-
-	logPath := defaultLogPath()
-	restoreLogs, err := configureTUILogging(logPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "configure tui logging: %v\n", err)
-		os.Exit(1)
-	}
-	defer restoreLogs()
-
-	// Start embedded daemon
-	d := daemon.New(db, sockPath)
-	if err := d.Start(); err != nil {
-		_ = restoreLogs()
-		fmt.Fprintf(os.Stderr, "start daemon: %v\n", err)
-		os.Exit(1)
-	}
-	defer d.Stop()
-	daemon.WritePID()
-	defer daemon.RemovePID()
-
-	// Start Codex watcher (async emit decouples file parsing from DB writes)
-	codexWatcher := collector.NewCodexWatcher(func(ev event.Event) {
-		d.ProcessExternalEventAsync(ev)
-	})
-	collector.RegisterCodexWatcher(codexWatcher)
-	codexWatcher.Start()
-	defer codexWatcher.Stop()
-
-	// Start Claude log watcher
-	claudeLogWatcher := collector.NewClaudeLogWatcher(func(ev event.Event) {
-		d.ProcessExternalEventAsync(ev)
-	})
-	claudeLogWatcher.Start()
-	defer claudeLogWatcher.Stop()
-
-	eventCh := d.Subscribe()
-
-	// Forward daemon events to TUI.
-	// Use a done channel so we can stop the goroutine before calling Unsubscribe,
-	// preventing a race where broadcast sends to the channel after it is removed from subs.
-	// The tuiCh send is non-blocking so the goroutine never stalls after the TUI exits.
-	tuiCh := make(chan tui.EventMsg, 256)
-	done := make(chan struct{})
-	go func() {
-		defer close(tuiCh)
-		for {
-			select {
-			case _, ok := <-eventCh:
-				if !ok {
-					return
-				}
-				select {
-				case tuiCh <- tui.EventMsg{}:
-				default:
-				}
-			case <-done:
-				return
-			}
-		}
-	}()
-
-	m := newTUIModel(db, tuiCh, opts)
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	go checkAndNotifyUpdate(p)
-	if _, err := p.Run(); err != nil {
-		_ = restoreLogs()
-		fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
-		os.Exit(1)
-	}
-	close(done)
-	d.Unsubscribe(eventCh)
 }
 
 func runDaemon() {
@@ -847,111 +621,6 @@ func isTokenMeterEmitCommand(cmd string) bool {
 	return base == "tm" || base == "tokenmeter" || base == "agmon"
 }
 
-func runReport() {
-	if maybePrintCmdHelp("report", os.Args[2:]) {
-		return
-	}
-	db := mustOpenDB()
-	defer db.Close()
-
-	// Check for --weekly or --monthly flag
-	if len(os.Args) > 2 {
-		switch os.Args[2] {
-		case "--weekly":
-			runPeriodReport(db, "weekly")
-			return
-		case "--monthly":
-			runPeriodReport(db, "monthly")
-			return
-		}
-	}
-
-	target, ok := latestOrRequestedSession(db, os.Args)
-	if !ok {
-		fmt.Println("No sessions recorded.")
-		return
-	}
-
-	name := target.SessionID
-	if target.GitBranch != "" {
-		name = target.GitBranch
-	} else if target.CWD != "" {
-		name = filepath.Base(target.CWD)
-	}
-	fmt.Printf("Session:  %s\n", name)
-	fmt.Printf("ID:       %s\n", target.SessionID)
-	fmt.Printf("Platform: %s\n", target.Platform)
-	fmt.Printf("Status:   %s\n", target.Status)
-	fmt.Printf("Started: %s\n", target.StartTime.Format("2006-01-02 15:04:05"))
-	if target.EndTime != nil {
-		fmt.Printf("Ended: %s\n", target.EndTime.Format("2006-01-02 15:04:05"))
-		fmt.Printf("Duration: %s\n", target.EndTime.Sub(target.StartTime).Round(time.Second))
-	}
-	fmt.Printf("Tokens: %d in + %d out = %d total\n",
-		target.TotalInputTokens, target.TotalOutputTokens,
-		target.TotalInputTokens+target.TotalOutputTokens)
-	fmt.Println()
-
-	agents, _ := db.ListAgents(target.SessionID)
-	if len(agents) > 0 {
-		fmt.Println("Agents:")
-		for _, a := range agents {
-			prefix := "  "
-			if a.ParentAgentID != "" {
-				prefix = "    └─ "
-			}
-			status := "●"
-			if a.Status == "ended" {
-				status = "✓"
-			}
-			role := a.Role
-			if role == "" {
-				role = "main"
-			}
-			fmt.Printf("%s%s %s  %s\n", prefix, status, role, a.AgentID)
-		}
-		fmt.Println()
-	}
-
-	toolCalls, _ := db.ListToolCalls(target.SessionID, 50)
-	if len(toolCalls) > 0 {
-		fmt.Println("Tool Calls (last 50):")
-		fmt.Printf("  %-8s %-15s %8s  %s\n", "TIME", "TOOL", "DURATION", "STATUS")
-		for _, tc := range toolCalls {
-			dur := fmt.Sprintf("%.1fs", float64(tc.DurationMs)/1000)
-			if tc.DurationMs == 0 {
-				dur = "-"
-			}
-			status := "✓"
-			switch tc.Status {
-			case "fail":
-				status = "✗"
-			case "pending":
-				status = "…"
-			case "retry":
-				status = "↻"
-			}
-			fmt.Printf("  %-8s %-15s %8s  %s\n",
-				tc.StartTime.Format("15:04:05"), tc.ToolName, dur, status)
-		}
-		fmt.Println()
-	}
-
-	fileChanges, _ := db.ListFileChanges(target.SessionID)
-	if len(fileChanges) > 0 {
-		fmt.Println("File Changes:")
-		for _, fc := range fileChanges {
-			icon := "~"
-			switch fc.ChangeType {
-			case "create":
-				icon = "+"
-			case "delete":
-				icon = "-"
-			}
-			fmt.Printf("  %s %s\n", icon, fc.FilePath)
-		}
-	}
-}
 
 func runShare() {
 	if maybePrintCmdHelp("share", os.Args[2:]) {
@@ -1185,113 +854,6 @@ func runWeb() error {
 	}
 }
 
-func runStatus() {
-	if maybePrintCmdHelp("status", os.Args[2:]) {
-		return
-	}
-	db := mustOpenDB()
-	defer db.Close()
-
-	sessions, err := db.ListSessions()
-	if err != nil {
-		log.Fatalf("list sessions: %v", err)
-	}
-
-	activeCount := 0
-	for _, s := range sessions {
-		if s.Status == "active" {
-			activeCount++
-		}
-	}
-
-	todayIn, todayOut, _ := db.GetTodayTokens()
-	todayCost, _ := db.GetTodayCost()
-	fmt.Printf("Running: %d\n", activeCount)
-	fmt.Printf("Today's tokens:  %s in / %s out\n", fmtTokens(todayIn), fmtTokens(todayOut))
-	fmt.Printf("Today's cost:    $%.4f\n", todayCost)
-	fmt.Println()
-
-	if len(sessions) == 0 {
-		fmt.Println("No sessions recorded.")
-		return
-	}
-
-	fmt.Printf("%-24s %-8s %8s %8s  %8s  %s\n", "SESSION", "PLATFORM", "IN", "OUT", "COST", "STATUS")
-	for _, s := range sessions {
-		status := "●"
-		switch s.Status {
-		case "ended":
-			status = "◌"
-		case "stale":
-			status = "?"
-		}
-		name := s.SessionID
-		if s.GitBranch != "" {
-			name = s.GitBranch
-		} else if s.CWD != "" {
-			name = filepath.Base(s.CWD)
-		}
-		if len(name) > 24 {
-			name = name[:24]
-		}
-		fmt.Printf("%-24s %-8s %8s %8s  %8s  %s\n",
-			name, s.Platform, fmtTokens(s.TotalInputTokens), fmtTokens(s.TotalOutputTokens),
-			fmt.Sprintf("$%.2f", s.TotalCostUSD), status)
-	}
-}
-
-func runCost() {
-	if maybePrintCmdHelp("cost", os.Args[2:]) {
-		return
-	}
-	db := mustOpenDB()
-	defer db.Close()
-
-	period := "today"
-	if len(os.Args) > 2 {
-		period = os.Args[2]
-	}
-
-	// Local time so "today/week/month" boundaries match the user's calendar
-	// (DB aggregates with DATE(timestamp, 'localtime')).
-	now := time.Now()
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-
-	var since *time.Time
-	var label string
-	switch period {
-	case "today":
-		t := startOfDay
-		since, label = &t, "Today"
-	case "week":
-		wd := startOfDay.Weekday()
-		if wd == 0 {
-			wd = 7
-		}
-		t := startOfDay.AddDate(0, 0, -int(wd-1))
-		since, label = &t, "This week"
-	case "month":
-		t := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
-		since, label = &t, "This month"
-	case "3month":
-		t := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local).AddDate(0, -2, 0)
-		since, label = &t, "Last 3 months"
-	case "year":
-		t := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, time.Local)
-		since, label = &t, "This year"
-	case "all":
-		since, label = nil, "All time"
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown period: %q (use today, week, month, 3month, year, all)\n", period)
-		os.Exit(1)
-	}
-
-	in, out, _ := db.GetTokensSince(since)
-	cost, _ := db.GetCostSince(since)
-	fmt.Printf("%s:\n", label)
-	fmt.Printf("  Tokens: %s in + %s out = %s total\n", fmtTokens(in), fmtTokens(out), fmtTokens(in+out))
-	fmt.Printf("  Cost:   $%.4f\n", cost)
-}
 
 func runClean() {
 	if maybePrintCmdHelp("clean", os.Args[2:]) {
@@ -1377,17 +939,6 @@ func fmtTokens(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
-func checkAndNotifyUpdate(p *tea.Program) {
-	rel, err := fetchLatestRelease()
-	if err != nil {
-		return
-	}
-	latest := strings.TrimPrefix(rel.TagName, "v")
-	if latest != version && version != "dev" {
-		p.Send(tui.UpdateAvailableMsg(latest))
-	}
-}
-
 type helpSection struct {
 	title    string
 	commands []helpCommand
@@ -1413,14 +964,14 @@ var helpSections = []helpSection{
 		{"daemon", "Run daemon (foreground)"},
 		{"web [--port N]", "Web dashboard at http://localhost:N"},
 		{"watch [opts]", "Stream live events to stdout"},
-		{"top [--once]", "Live dashboard snapshot"},
 	}},
-	{"Daily commands", []helpCommand{
-		{"status", "Active session summary"},
-		{"cost <period>", "Token/cost stats (today|week|month|3month|year|all)"},
-		{"report [session]", "Detailed session report"},
-		{"report --weekly", "Weekly Markdown cost report"},
-		{"report --monthly", "Monthly Markdown cost report"},
+	{"Usage summary (ccusage-aligned)", []helpCommand{
+		{"daily", "Daily token / cost summary"},
+		{"weekly", "Weekly summary (ISO week)"},
+		{"monthly", "Monthly summary"},
+		{"session [<id>]", "Per-session breakdown"},
+		{"blocks [--active]", "5-hour session blocks + burn rate"},
+		{"statusline", "Claude Code statusline provider (stdin → stdout)"},
 		{"share [session]", "Shareable Markdown session recap"},
 	}},
 	{"Analysis", []helpCommand{
@@ -1445,14 +996,17 @@ var helpSections = []helpSection{
 		{"budget <subcommand>", "Manage budgets: list, set, delete, usage"},
 		{"webhook <subcommand>", "Manage webhooks: list, test, replay"},
 	}},
+	{"Deprecated (removed in v2.0)", []helpCommand{
+		{"cost", "use 'tm daily' instead"},
+		{"report", "use 'tm session' / 'tm weekly' / 'tm monthly' instead"},
+		{"status", "use 'tm blocks --active' instead"},
+		{"top", "use 'tm blocks --active' instead"},
+	}},
 }
 
 func printHelp() {
 	fmt.Printf("TokenMeter v%s — AI coding agent usage meter\n\n", version)
 	fmt.Println("Usage: tm <command> [args...]")
-	fmt.Println("Or:    tm                  Launch TUI (auto-starts daemon)")
-	fmt.Println("       tm --all            Launch TUI without workspace filtering")
-	fmt.Println("       tm --workspace PATH Launch TUI scoped to a workspace path")
 	fmt.Println()
 
 	width := helpCommandWidth(helpSections)
@@ -1466,8 +1020,8 @@ func printHelp() {
 
 	fmt.Println("▎Examples")
 	for _, example := range []helpCommand{
-		{"tm", "Launch TUI"},
-		{"tm cost today", "Show today's tokens"},
+		{"tm daily", "Show today's tokens by day"},
+		{"tm blocks --active", "Live 5h block with burn rate"},
 		{"tm export --range week", "Export this week as CSV"},
 		{"tm compare abc def", "Diff sessions by ID prefix"},
 		{`tm budget set "Monthly" 100 --platform claude`, "Create a Claude monthly budget"},
