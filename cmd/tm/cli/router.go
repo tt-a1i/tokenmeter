@@ -9,6 +9,7 @@ import (
 // caller to dispatch on.
 type Command struct {
 	Name          string
+	Alias         string // original argv[0] when arrived via a deprecated alias; "" otherwise
 	Shared        Shared
 	BlocksArgs    BlocksArgs
 	AggregateArgs AggregateArgs
@@ -30,6 +31,11 @@ func Route(argv []string) (Command, error) {
 		return Command{}, err
 	}
 	cmd := Command{Name: name, Shared: shared, Rest: rest}
+	if target, ok := IsDeprecatedAlias(name); ok {
+		cmd.Alias = name
+		cmd.Name = "deprecated:" + target
+		return cmd, nil
+	}
 	switch name {
 	case "daily":
 		cmd.AggregateArgs = AggregateArgs{Shared: shared, Bucket: BucketDaily}

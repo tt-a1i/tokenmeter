@@ -219,14 +219,8 @@ func main() {
 		}
 	case "uninstall":
 		runUninstall()
-	case "status":
-		runStatus()
-	case "report":
-		runReport()
 	case "share":
 		runShare()
-	case "cost":
-		runCost()
 	case "export":
 		if err := runExport(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -259,11 +253,6 @@ func main() {
 		}
 	case "watch":
 		if err := runWatch(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-	case "top":
-		if err := runTop(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -326,7 +315,8 @@ func main() {
 		}
 	case "help", "-h", "--help":
 		printHelp()
-	case "daily", "weekly", "monthly", "session", "blocks", "statusline":
+	case "daily", "weekly", "monthly", "session", "blocks", "statusline",
+		"cost", "report", "status", "top":
 		if err := runCLIDispatch(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -362,6 +352,8 @@ func runCLIDispatch(argv []string) error {
 		adapter := cli.NewActiveBlockAdapter(db, 5*time.Hour, now)
 		cfgPath := appdir.Path("statusline.json")
 		return cli.RunStatusline(ctx, os.Stdin, os.Stdout, adapter, cfgPath, now)
+	case "deprecated:daily", "deprecated:session", "deprecated:blocks-active":
+		return cli.RunDeprecatedAlias(ctx, os.Stdout, os.Stderr, cmd.Alias, cmd.Rest, db)
 	default:
 		return fmt.Errorf("internal: unhandled cli dispatch for %q", cmd.Name)
 	}
