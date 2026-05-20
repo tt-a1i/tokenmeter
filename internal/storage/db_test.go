@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -1407,5 +1409,31 @@ func TestListSessionsShowsActiveAndTokenSessions(t *testing.T) {
 		if s.SessionID == "old" {
 			t.Error("ended zero-token session should not appear in ListSessions")
 		}
+	}
+}
+
+func TestListUsageForBlocks(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	if err := db.UpsertSession("s1", event.PlatformClaude, time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+	for i, ts := range []time.Time{
+		time.Date(2026, 5, 20, 10, 5, 0, 0, time.UTC),
+		time.Date(2026, 5, 20, 16, 10, 0, 0, time.UTC), // > 5h after first → new block
+	} {
+		if err := db.InsertTokenUsage("a1", "s1", 100, 50, 0, 0, "claude-sonnet-4-6", 0.01, ts, fmt.Sprintf("src-%d", i)); err != nil {
+			t.Fatalf("InsertTokenUsage: %v", err)
+		}
+	}
+	got, err := db.ListUsageForBlocks(ctx, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("ListUsageForBlocks: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 entries, got %d", len(got))
+	}
+	if !got[0].Timestamp.Before(got[1].Timestamp) {
+		t.Fatalf("rows must be sorted ascending by timestamp")
 	}
 }

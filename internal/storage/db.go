@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -943,4 +944,76 @@ func (s *DB) InsertFileChangeWithSource(sessionID, filePath string, changeType e
 		indexID = sessionID + ":" + filePath + ":" + formatStorageTime(ts)
 	}
 	return s.IndexFileChange(sessionID, indexID, filePath, ts)
+}
+
+// TokenUsageEntry is a row from token_usage exposed for in-memory aggregation
+// by the blocks package (5h session-block identification).
+type TokenUsageEntry struct {
+	SourceID                 string
+	SessionID                string
+	AgentID                  string
+	Timestamp                time.Time
+	Model                    string
+	InputTokens              int64
+	OutputTokens             int64
+	CacheCreationInputTokens int64
+	CacheReadInputTokens     int64
+	CostUSD                  float64
+}
+
+// ListUsageForBlocks returns every token_usage row in ascending timestamp
+// order, optionally constrained to [since, until]. Used by internal/blocks
+// to identify 5h session blocks without aggregating in SQL.
+func (s *DB) ListUsageForBlocks(ctx context.Context, since, until time.Time) ([]TokenUsageEntry, error) {
+	q := `SELECT source_id, session_id, agent_id, timestamp, model,
+	             input_tokens, output_tokens, cache_creation_tokens,
+	             cache_read_tokens, cost_usd
+	      FROM token_usage`
+	var (
+		args   []any
+		wheres []string
+	)
+	if !since.IsZero() {
+		wheres = append(wheres, "timestamp >= ?")
+		args = append(args, formatStorageTime(since))
+	}
+	if !until.IsZero() {
+		wheres = append(wheres, "timestamp <= ?")
+		args = append(args, formatStorageTime(until))
+	}
+	if len(wheres) > 0 {
+		q += " WHERE " + strings.Join(wheres, " AND ")
+	}
+	q += " ORDER BY timestamp ASC"
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list usage for blocks: %w", err)
+	}
+	defer rows.Close()
+	var out []TokenUsageEntry
+	for rows.Next() {
+		var (
+			e        TokenUsageEntry
+			tsRaw    string
+			agentID  sql.NullString
+			model    sql.NullString
+			cacheCre sql.NullInt64
+			cacheRd  sql.NullInt64
+		)
+		if err := rows.Scan(&e.SourceID, &e.SessionID, &agentID, &tsRaw, &model,
+			&e.InputTokens, &e.OutputTokens, &cacheCre, &cacheRd, &e.CostUSD); err != nil {
+			return nil, fmt.Errorf("scan usage row: %w", err)
+		}
+		ts, ok := parseStorageTime(tsRaw)
+		if !ok {
+			return nil, fmt.Errorf("parse timestamp %q", tsRaw)
+		}
+		e.Timestamp = ts
+		e.AgentID = agentID.String
+		e.Model = model.String
+		e.CacheCreationInputTokens = cacheCre.Int64
+		e.CacheReadInputTokens = cacheRd.Int64
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
