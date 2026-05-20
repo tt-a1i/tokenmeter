@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"syscall"
@@ -224,6 +225,17 @@ func runCLIDispatch(argv []string) error {
 	cmd, err := cli.Route(argv)
 	if err != nil {
 		return err
+	}
+	if cmd.Shared.CPUProfile != "" {
+		f, err := os.Create(cmd.Shared.CPUProfile)
+		if err != nil {
+			return fmt.Errorf("create cpu profile: %w", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return fmt.Errorf("start cpu profile: %w", err)
+		}
+		defer pprof.StopCPUProfile()
 	}
 	ctx := context.Background()
 	db := mustOpenDB()
