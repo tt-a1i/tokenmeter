@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -26,6 +27,24 @@ type Config struct {
 	QuotaUSD float64 `json:"quota_usd"`
 	Format   string  `json:"format"` // "compact" (default) | "detailed"
 	Color    bool    `json:"color"`
+}
+
+// LoadConfig reads the statusline config from path. If the file does not
+// exist, returns a zero Config (no quota, no color). Other I/O errors are
+// returned.
+func LoadConfig(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Config{}, nil
+		}
+		return Config{}, err
+	}
+	var c Config
+	if err := json.Unmarshal(data, &c); err != nil {
+		return Config{}, err
+	}
+	return c, nil
 }
 
 // ParseInput reads and decodes Claude Code's stdin JSON.

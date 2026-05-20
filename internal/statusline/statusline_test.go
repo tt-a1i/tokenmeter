@@ -2,6 +2,7 @@ package statusline_test
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -44,5 +45,32 @@ func TestRenderHandlesNilBlock(t *testing.T) {
 	}
 	if buf.Len() == 0 {
 		t.Fatal("must still produce output when block is nil")
+	}
+}
+
+func TestLoadConfigMissingReturnsZero(t *testing.T) {
+	// Use a temp dir that we know is empty.
+	dir := t.TempDir()
+	cfg, err := statusline.LoadConfig(dir + "/missing.json")
+	if err != nil {
+		t.Fatalf("LoadConfig missing: %v", err)
+	}
+	if cfg.QuotaUSD != 0 || cfg.Color {
+		t.Fatalf("missing config must default to zero, got %+v", cfg)
+	}
+}
+
+func TestLoadConfigParsesQuota(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/statusline.json"
+	if err := os.WriteFile(path, []byte(`{"quota_usd":30.0,"color":true,"format":"compact"}`), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	cfg, err := statusline.LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.QuotaUSD != 30.0 || !cfg.Color {
+		t.Fatalf("LoadConfig parse mismatch: %+v", cfg)
 	}
 }
