@@ -2,7 +2,10 @@ module github.com/tt-a1i/tokenmeter
 
 go 1.24.2
 
-require modernc.org/sqlite v1.46.1
+require (
+	golang.org/x/term v0.29.0
+	modernc.org/sqlite v1.46.1
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
