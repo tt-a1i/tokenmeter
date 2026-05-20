@@ -98,11 +98,14 @@ make install
 ## Quick Start
 
 ```bash
-# Launch TUI (auto-installs Claude Code hooks + starts daemon on first run)
-tm
+tm setup             # one-time: register Claude hooks
+tm daemon &          # background collector
+tm daily             # today's summary across all sources
+tm blocks --active   # what's happening in the current 5-hour window
+tm web               # browser dashboard (separate process)
 ```
 
-That's it. Use Claude Code or Codex normally — TokenMeter captures everything in the background.
+Use Claude Code or Codex normally — TokenMeter captures everything in the background. See [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md) for the full old→new command mapping.
 
 ## Commands
 

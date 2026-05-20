@@ -104,11 +104,14 @@ make install
 ## 快速开始
 
 ```bash
-# 启动 TUI（首次运行自动注入 Claude Code hooks + 自动起 daemon）
-tm
+tm setup             # 首次运行：注册 Claude hooks
+tm daemon &          # 后台 collector
+tm daily             # 今天所有来源的汇总
+tm blocks --active   # 当前 5 小时窗口的实时情况
+tm web               # 浏览器 dashboard（独立进程）
 ```
 
-就这样。正常使用 Claude Code 或 Codex，TokenMeter 在后台自动采集所有数据。
+正常使用 Claude Code 或 Codex，TokenMeter 在后台自动采集所有数据。完整命令对照参见 [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md)。
 
 ## 命令
 

@@ -3,6 +3,25 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
+## v1.0.0 (unreleased)
+
+### Breaking
+- TUI removed. `tm` (no arguments) now prints help instead of entering an interactive interface.
+
+### Deprecated (will be removed in v2.0)
+- `tm cost` → use `tm daily`
+- `tm report` → use `tm session` / `tm weekly` / `tm monthly`
+- `tm status` → use `tm blocks --active`
+- `tm top` → use `tm blocks --active`
+
+### Added
+- `tm daily`, `tm weekly`, `tm monthly`, `tm session` — ccusage-style aggregate reports.
+- `tm blocks`, `tm blocks --active` — 5-hour session block view with burn rate and projection.
+- `tm statusline` — Claude Code statusline provider (`stdin JSON → stdout line`).
+- `--session-length` flag to customize block window.
+- LiteLLM-sourced pricing snapshot with weekly auto-refresh PR.
+- `--mode auto|calculate|display` cost mode.
+
 ## v0.8.3 — 2026-05-19 — Cross-platform CI fixes
 
 v0.8.2 functionally shipped to `main`, but its `ci.yml` `release` job
