@@ -3,6 +3,8 @@
 // §4.4. Online refresh lives in refresh.go.
 package pricing
 
+//go:generate go run ../../scripts/refresh-pricing
+
 import (
 	_ "embed"
 	"encoding/json"

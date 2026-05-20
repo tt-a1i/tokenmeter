@@ -17,14 +17,17 @@ func TestLoadEmbeddedHasClaudeSonnet(t *testing.T) {
 	}
 }
 
-func TestLookupGPT5HasFastMultiplier(t *testing.T) {
+func TestLookupClaudeOpus46HasFastMultiplier(t *testing.T) {
+	// Upstream LiteLLM ships `provider_specific_entry.fast=6` for claude-opus-4-6;
+	// gpt-5 has no fast multiplier in the live snapshot, so we exercise the field
+	// against a model that actually carries it.
 	m := pricing.LoadEmbedded()
-	p, ok := m.Lookup("gpt-5")
+	p, ok := m.Lookup("claude-opus-4-6")
 	if !ok {
-		t.Fatal("gpt-5 must exist")
+		t.Fatal("claude-opus-4-6 must exist")
 	}
-	if p.FastMultiplier != 2.0 {
-		t.Fatalf("FastMultiplier=%f want 2.0", p.FastMultiplier)
+	if p.FastMultiplier != 6.0 {
+		t.Fatalf("FastMultiplier=%f want 6.0", p.FastMultiplier)
 	}
 }
 
