@@ -2,14 +2,12 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"io"
-	"text/tabwriter"
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
+	"github.com/tt-a1i/tokenmeter/internal/render"
 )
 
 // BlocksArgs is the resolved input to RunBlocks.
@@ -27,7 +25,10 @@ type BlocksArgs struct {
 // workspace filtering.
 type BlocksLoader = AggregateLoader
 
-// RunBlocks lists session blocks, optionally only the active one.
+// RunBlocks lists session blocks, optionally only the active one. Output is
+// handed off to render.New().RenderBlocks; the boxed table (PERIOD / MODELS
+// / INPUT / OUTPUT / CACHE CRT. / CACHE READ / TOTAL / COST / STATUS) and
+// the camelCase JSON envelope both live in internal/render.
 func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader BlocksLoader) error {
 	since, err := parseDateFlag(args.Shared.Since)
 	if err != nil {
@@ -46,12 +47,33 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	if args.Active {
 		all = filterActive(all)
 	}
-	if args.Shared.JSON {
-		return writeBlocksJSON(out, all)
+	rows := make([]render.BlockRow, 0, len(all))
+	for _, b := range all {
+		row := render.BlockRow{
+			Period:            b.StartTime.Format("2006-01-02 15:04"),
+			Models:            b.Models,
+			InputTokens:       b.Tokens.Input,
+			OutputTokens:      b.Tokens.Output,
+			CacheCreateTokens: b.Tokens.CacheCreate,
+			CacheReadTokens:   b.Tokens.CacheRead,
+			TotalTokens:       b.Tokens.Total(),
+			Cost:              b.Cost,
+			Status:            blockStatus(b),
+		}
+		if b.Projection != nil {
+			row.Projection = &render.BlockProjection{
+				TotalTokens:   b.Projection.TotalTokens,
+				TotalCost:     b.Projection.TotalCost,
+				RemainingTime: b.Projection.RemainingTime,
+			}
+		}
+		rows = append(rows, row)
 	}
-	return writeBlocksTable(out, all)
+	return render.New().RenderBlocks(out, rows, renderOpts(args.Shared, out))
 }
 
+// filterActive keeps only the active 5h window, honoring --active. Lives in
+// the cli layer because render is presentation-only.
 func filterActive(in []blocks.SessionBlock) []blocks.SessionBlock {
 	var out []blocks.SessionBlock
 	for _, b := range in {
@@ -62,67 +84,13 @@ func filterActive(in []blocks.SessionBlock) []blocks.SessionBlock {
 	return out
 }
 
-func writeBlocksTable(w io.Writer, bs []blocks.SessionBlock) error {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "PERIOD\tMODELS\tTOKENS\tCOST\tSTATUS")
-	for _, b := range bs {
-		status := "closed"
-		switch {
-		case b.IsActive:
-			status = "ACTIVE"
-		case b.IsGap:
-			status = "gap"
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t$%.2f\t%s\n",
-			b.StartTime.Format("2006-01-02 15:04"),
-			joinModels(b.Models),
-			fmtInt(b.Tokens.Total()),
-			b.Cost,
-			status,
-		)
+func blockStatus(b blocks.SessionBlock) string {
+	switch {
+	case b.IsActive:
+		return "ACTIVE"
+	case b.IsGap:
+		return "gap"
+	default:
+		return "closed"
 	}
-	return tw.Flush()
-}
-
-func writeBlocksJSON(w io.Writer, bs []blocks.SessionBlock) error {
-	type out struct {
-		Start    time.Time `json:"start"`
-		End      time.Time `json:"end"`
-		IsActive bool      `json:"is_active"`
-		IsGap    bool      `json:"is_gap"`
-		Tokens   int64     `json:"tokens"`
-		Cost     float64   `json:"cost"`
-		Models   []string  `json:"models"`
-	}
-	arr := make([]out, 0, len(bs))
-	for _, b := range bs {
-		arr = append(arr, out{
-			Start: b.StartTime, End: b.EndTime, IsActive: b.IsActive, IsGap: b.IsGap,
-			Tokens: b.Tokens.Total(), Cost: b.Cost, Models: b.Models,
-		})
-	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(arr)
-}
-
-func joinModels(models []string) string {
-	if len(models) == 0 {
-		return "-"
-	}
-	s := models[0]
-	for _, m := range models[1:] {
-		s += ", " + m
-	}
-	return s
-}
-
-func fmtInt(n int64) string {
-	if n >= 1_000_000 {
-		return fmt.Sprintf("%.2fM", float64(n)/1_000_000)
-	}
-	if n >= 1_000 {
-		return fmt.Sprintf("%.1fK", float64(n)/1_000)
-	}
-	return fmt.Sprintf("%d", n)
 }

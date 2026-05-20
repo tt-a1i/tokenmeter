@@ -152,6 +152,81 @@ func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Opt
 	return nil
 }
 
+// RenderBlocks emits a rounded-box table of 5-hour session blocks, or
+// delegates to the camelCase JSON renderer when opts.JSON is set. Column
+// layout:
+//
+//	PERIOD | MODELS | INPUT | OUTPUT | CACHE CRT. | CACHE READ | TOTAL | COST | STATUS
+//
+// TOTAL footer leaves STATUS blank (status is per-row, not summable).
+func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options) error {
+	if opts.JSON {
+		return d.renderBlocksJSON(w, rows)
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(w, "(no data in range)")
+		return nil
+	}
+
+	t := table.NewWriter()
+	t.SetOutputMirror(w)
+	t.SetStyle(table.StyleRounded)
+	t.AppendHeader(table.Row{"Period", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Status"})
+
+	colorize := func(c text.Color, s string) string {
+		if !opts.Color {
+			return s
+		}
+		return c.Sprint(s)
+	}
+
+	colorizeStatus := func(s string) string {
+		if !opts.Color {
+			return s
+		}
+		switch s {
+		case "ACTIVE":
+			return text.FgGreen.Sprint(s)
+		case "gap":
+			return text.Faint.Sprint(s)
+		default:
+			return text.FgHiBlack.Sprint(s)
+		}
+	}
+
+	var sumIn, sumOut, sumCC, sumCR, sumTotal int64
+	var sumCost float64
+	for _, r := range rows {
+		t.AppendRow(table.Row{
+			r.Period,
+			colorize(text.FgCyan, joinList(r.Models)),
+			colorize(text.FgYellow, fmtInt(r.InputTokens)),
+			colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+			colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+			colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
+			colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+			colorize(text.FgRed, fmtCost(r.Cost)),
+			colorizeStatus(r.Status),
+		})
+		sumIn += r.InputTokens
+		sumOut += r.OutputTokens
+		sumCC += r.CacheCreateTokens
+		sumCR += r.CacheReadTokens
+		sumTotal += r.TotalTokens
+		sumCost += r.Cost
+	}
+	t.AppendSeparator()
+	t.AppendFooter(table.Row{
+		"TOTAL", "",
+		fmtInt(sumIn), fmtInt(sumOut),
+		fmtInt(sumCC), fmtInt(sumCR),
+		fmtInt(sumTotal), fmtCost(sumCost),
+		"",
+	})
+	t.Render()
+	return nil
+}
+
 func fmtInt(n int64) string {
 	if n >= 1_000_000 {
 		return fmt.Sprintf("%.2fM", float64(n)/1_000_000)

@@ -4,7 +4,6 @@
 package render
 
 import (
-	"fmt"
 	"io"
 	"time"
 )
@@ -90,14 +89,6 @@ func New() Renderer { return defaultRenderer{} }
 
 type defaultRenderer struct{}
 
-// RenderBlocks dispatches the JSON path immediately (Task 9 landed the
-// camelCase encoder); the boxed-table arm still stubs pending cli/blocks.go
-// integration in Task 12. RenderSessions / RenderAggregate boxed arms now
-// live in boxed.go.
-
-func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options) error {
-	if opts.JSON {
-		return d.renderBlocksJSON(w, rows)
-	}
-	return fmt.Errorf("render: RenderBlocks boxed table not implemented yet (Task 12)")
-}
+// RenderAggregate / RenderSessions / RenderBlocks live in boxed.go (boxed
+// arm) + json.go (JSON arm). defaultRenderer has no method bodies on this
+// file beyond the constructor + struct decl.
