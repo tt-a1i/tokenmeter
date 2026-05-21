@@ -81,9 +81,21 @@ func (s *DB) AggregateUsage(ctx context.Context, f AggregateFilter) ([]Aggregate
 		q += `, MAX(s.cwd) AS project,
 		         MAX(u.timestamp) AS last_activity`
 	}
-	q += `
+	// Sessions are only needed when filtering by Project or surfacing
+	// MAX(s.cwd) for BucketSession. Skipping the dead JOIN unblocks SQLite
+	// from picking idx_token_usage_ts_covering for daily/weekly/monthly —
+	// the planner otherwise nests via idx_token_usage_session and ignores
+	// the covering index entirely. token_usage.session_id has a FK to
+	// sessions(session_id) so result rows are unaffected.
+	needSessions := f.Project != "" || f.Bucket == BucketSession
+	if needSessions {
+		q += `
 	FROM token_usage u
 	JOIN sessions s ON s.session_id = u.session_id`
+	} else {
+		q += `
+	FROM token_usage u`
+	}
 
 	var args []any
 	var wheres []string

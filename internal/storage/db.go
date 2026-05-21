@@ -319,6 +319,28 @@ func (s *DB) migrate() error {
 	if err != nil {
 		return err
 	}
+	// Covering index for AggregateUsage's SUM/GROUP BY: leading timestamp
+	// serves the [Since, Until] range filter; the remaining columns let SQLite
+	// satisfy the query from the index alone (no token_usage table B-tree
+	// page reads). See docs/perf/v1.0.3-baseline.md for the speedup numbers.
+	// CREATE INDEX IF NOT EXISTS is idempotent across upgrades; populated
+	// lazily by SQLite on first migrate of an existing DB.
+	_, err = s.db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_token_usage_ts_covering
+		ON token_usage(
+			timestamp DESC,
+			session_id,
+			model,
+			input_tokens,
+			output_tokens,
+			cache_creation_tokens,
+			cache_read_tokens,
+			cost_usd
+		)
+	`)
+	if err != nil {
+		return err
+	}
 	if _, err = s.db.Exec(`DROP INDEX IF EXISTS idx_file_changes_source`); err != nil {
 		return err
 	}
