@@ -1,0 +1,18 @@
+[
+  {
+    "variant":"ai",
+    "content":"reply",
+    "timestamp":"2026-04-15T11:00:00.000Z",
+    "metadata":{
+      "codebuff":{
+        "model":"gpt-5",
+        "usage":{
+          "prompt_tokens":300,
+          "completion_tokens":120,
+          "cache_read_input_tokens":1024,
+          "total_tokens":1444
+        }
+      }
+    }
+  }
+]

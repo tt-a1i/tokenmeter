@@ -1,0 +1,19 @@
+[
+  {"role":"user","content":"hi","timestamp":"2026-04-15T10:00:00.000Z"},
+  {
+    "role":"assistant",
+    "content":"hello back",
+    "timestamp":"2026-04-15T10:00:30.000Z",
+    "credits":0.0125,
+    "metadata":{
+      "model":"claude-sonnet-4",
+      "usage":{
+        "inputTokens":100,
+        "outputTokens":50,
+        "cacheReadInputTokens":200,
+        "cacheCreationInputTokens":25,
+        "totalTokens":375
+      }
+    }
+  }
+]

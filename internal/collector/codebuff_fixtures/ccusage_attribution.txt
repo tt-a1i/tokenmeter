@@ -1,0 +1,9 @@
+Fixture inspired by ccusage v20 (MIT License) — specifically
+rust/crates/ccusage/src/adapter/codebuff.rs and its expectations
+around the `<root>/projects/<project>/chats/<chat>/chat-messages.json`
+layout, the `metadata.usage` plus `metadata.codebuff.usage` merge, the
+assistant `variant`/`role` discriminator (one of `ai`/`agent`/
+`assistant`), and the credits scalar.
+
+Two project subtrees exist to exercise the multi-project walk and the
+session-id derivation, which concatenates channel/project/chat-id.
