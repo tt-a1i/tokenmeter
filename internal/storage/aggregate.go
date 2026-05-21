@@ -85,8 +85,15 @@ func (s *DB) AggregateUsage(ctx context.Context, f AggregateFilter) ([]Aggregate
 	// MAX(s.cwd) for BucketSession. Skipping the dead JOIN unblocks SQLite
 	// from picking idx_token_usage_ts_covering for daily/weekly/monthly —
 	// the planner otherwise nests via idx_token_usage_session and ignores
-	// the covering index entirely. token_usage.session_id has a FK to
-	// sessions(session_id) so result rows are unaffected.
+	// the covering index entirely.
+	//
+	// JOIN elision safety: daily/weekly/monthly buckets skip the JOIN to
+	// sessions. This is safe because the daemon's invariant guarantees
+	// "upsert session before insert token_usage" (see internal/daemon/daemon.go).
+	// We intentionally do not rely on SQLite's REFERENCES enforcement:
+	// PRAGMA foreign_keys defaults to OFF and the REFERENCES clause is
+	// declarative-only. A future task may enable PRAGMA foreign_keys=ON
+	// after confirming no orphan rows in existing user DBs.
 	needSessions := f.Project != "" || f.Bucket == BucketSession
 	if needSessions {
 		q += `

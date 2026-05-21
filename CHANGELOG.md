@@ -3,6 +3,27 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
+## v1.0.3 — 2026-05-21
+
+### Performance
+- `token_usage(timestamp DESC)` covering index + JOIN elision for daily/weekly/
+  monthly buckets. SQL planner now uses the covering index instead of nested-loop
+  via the session index.
+  - session warm 1.92s → 1.16s (**1.66×** — biggest single win)
+  - weekly warm 1.02s → 0.88s (1.16×)
+  - daily warm 0.95s → 0.85s (1.12×)
+  - monthly warm 1.01s → 0.90s (1.12×)
+  - blocks unchanged (raw timeline scan, not push-down)
+- Index size cost: **+46 MB / +8%** on 549 MB DB.
+- See `docs/perf/v1.0.3-baseline.md` for benchmark methodology + EXPLAIN
+  QUERY PLAN verification.
+
+### Internal
+- daily/weekly/monthly skip the `JOIN sessions` because the daemon invariant
+  guarantees `session_id` has an upstream sessions row (PRAGMA foreign_keys
+  defaults to OFF; REFERENCES is declarative-only). Session bucket retains
+  the JOIN to read `MAX(s.cwd)` for projectPath.
+
 ## v1.0.2 — 2026-05-21
 
 ### Performance

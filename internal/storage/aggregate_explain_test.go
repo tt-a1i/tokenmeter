@@ -54,6 +54,9 @@ func TestAggregateUsageDayUsesCoveringIndex(t *testing.T) {
 	// Mirror the SQL shape used by AggregateUsage for BucketDay /
 	// non-breakdown / no Project filter — JOIN sessions is skipped, which is
 	// what lets the planner pick the covering index.
+	//
+	// Shape mirrors aggregate.go:73-117 (daily no-JOIN path: needSessions=false).
+	// If you change AggregateUsage SQL generation, update this string accordingly.
 	q := `SELECT date(u.timestamp) AS bucket,
 	             GROUP_CONCAT(DISTINCT u.model) AS model_col,
 	             COALESCE(SUM(u.input_tokens), 0),
@@ -84,6 +87,9 @@ func TestAggregateUsageSessionUsesCoveringIndex(t *testing.T) {
 		t.Fatalf("ANALYZE: %v", err)
 	}
 
+	// Shape mirrors aggregate.go:73-117 (session JOIN path: needSessions=true,
+	// BucketSession adds MAX(s.cwd) / MAX(u.timestamp) to SELECT).
+	// If you change AggregateUsage SQL generation, update this string accordingly.
 	q := `SELECT u.session_id AS bucket,
 	             GROUP_CONCAT(DISTINCT u.model) AS model_col,
 	             COALESCE(SUM(u.input_tokens), 0),
@@ -140,6 +146,11 @@ func TestAggregateUsageDayExplainHumanReadable(t *testing.T) {
 	if _, err := db.db.Exec("ANALYZE"); err != nil {
 		t.Fatalf("ANALYZE: %v", err)
 	}
+	// NOTE: this is a developer-aid printout. The SQL below INTENTIONALLY
+	// retains JOIN sessions to show the "before JOIN elision" plan for
+	// comparison. Live AggregateUsage no longer emits this SQL for daily
+	// (see aggregate.go needSessions decision) — the production daily path
+	// drops the JOIN so the planner picks idx_token_usage_ts_covering.
 	plan := explainAggregate(t, db, `SELECT date(u.timestamp), SUM(u.input_tokens)
 		FROM token_usage u JOIN sessions s ON s.session_id = u.session_id
 		WHERE u.timestamp >= ? GROUP BY 1`, "2026-05-19T00:00:00.000000000Z")
