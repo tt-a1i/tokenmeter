@@ -221,3 +221,63 @@ func TestAggregateUsageTimezoneOffset(t *testing.T) {
 		t.Fatalf("want 2026-05-20 bucket (Shanghai TZ), got %+v", rows)
 	}
 }
+
+func TestAggregateUsageSession(t *testing.T) {
+	db := openTestDB(t)
+	seedRow(t, db, "s1", "claude", mustTime(t, "2026-05-19T10:00:00Z"), 100, 200, 0, 0, 1.0)
+	seedRow(t, db, "s1", "claude", mustTime(t, "2026-05-19T11:00:00Z"), 50, 100, 0, 0, 0.5)
+	seedRow(t, db, "s2", "gpt", mustTime(t, "2026-05-20T10:00:00Z"), 300, 0, 0, 0, 2.0)
+	if err := db.UpdateSessionMeta("s1", "/code/foo", "main"); err != nil {
+		t.Fatalf("update meta: %v", err)
+	}
+
+	rows, err := db.AggregateUsage(context.Background(), AggregateFilter{Bucket: BucketSession})
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 sessions, got %d", len(rows))
+	}
+	// rows ordered by session_id ASC ("s1", "s2")
+	if rows[0].Bucket != "s1" {
+		t.Errorf("row 0 bucket: %q", rows[0].Bucket)
+	}
+	if rows[0].Project != "/code/foo" {
+		t.Errorf("row 0 project: %q", rows[0].Project)
+	}
+	if rows[0].InputTokens != 150 {
+		t.Errorf("row 0 input: %d", rows[0].InputTokens)
+	}
+	expectedLast := mustTime(t, "2026-05-19T11:00:00Z")
+	if !rows[0].LastActivity.Equal(expectedLast) {
+		t.Errorf("row 0 last_activity: got %v, want %v", rows[0].LastActivity, expectedLast)
+	}
+	if rows[1].Bucket != "s2" {
+		t.Errorf("row 1 bucket: %q", rows[1].Bucket)
+	}
+	if rows[1].Project != "" {
+		t.Errorf("row 1 project should be empty: %q", rows[1].Project)
+	}
+}
+
+func TestAggregateUsageSessionBreakdown(t *testing.T) {
+	db := openTestDB(t)
+	seedRow(t, db, "s1", "claude", mustTime(t, "2026-05-19T10:00:00Z"), 100, 0, 0, 0, 1.0)
+	seedRow(t, db, "s1", "gpt", mustTime(t, "2026-05-19T11:00:00Z"), 50, 0, 0, 0, 0.5)
+
+	rows, err := db.AggregateUsage(context.Background(), AggregateFilter{
+		Bucket: BucketSession, Breakdown: true,
+	})
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 session+model rows, got %d", len(rows))
+	}
+	if rows[0].Bucket != "s1" || rows[0].Model != "claude" {
+		t.Errorf("row 0: %+v", rows[0])
+	}
+	if rows[1].Model != "gpt" {
+		t.Errorf("row 1: %+v", rows[1])
+	}
+}
