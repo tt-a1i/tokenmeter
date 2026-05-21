@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,16 @@ import (
 // envelope", not the row count.
 func TestAdapterSubcommandsReachable(t *testing.T) {
 	binDir := t.TempDir()
-	bin := filepath.Join(binDir, "tm-e2e")
+	binName := "tm-e2e"
+	if runtime.GOOS == "windows" {
+		// `go build -o tm-e2e` on Windows silently produces tm-e2e.exe;
+		// the subsequent exec.Command("tm-e2e") then fails with
+		// "executable file not found". Match the suffix go-build will
+		// actually write so both the build target path and the exec
+		// lookup agree.
+		binName += ".exe"
+	}
+	bin := filepath.Join(binDir, binName)
 	out, err := exec.Command("go", "build", "-o", bin, "./").CombinedOutput()
 	if err != nil {
 		t.Fatalf("build tm: %v\n%s", err, out)
