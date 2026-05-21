@@ -205,7 +205,9 @@ func main() {
 	case "help", "-h", "--help":
 		printHelp()
 	case "daily", "weekly", "monthly", "session", "blocks", "statusline",
-		"cost", "report", "status", "top":
+		"cost", "report", "status", "top",
+		"amp", "codebuff", "copilot", "droid", "gemini", "goose", "hermes",
+		"kilo", "kimi", "openclaw", "opencode", "pi", "qwen":
 		if err := runCLIDispatch(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -261,6 +263,8 @@ func runCLIDispatch(argv []string) error {
 			}))
 	case "deprecated:daily", "deprecated:session", "deprecated:blocks-active":
 		return cli.RunDeprecatedAlias(ctx, os.Stdout, os.Stderr, cmd.Alias, cmd.Rest, db)
+	case "adapter":
+		return cli.RunAdapter(ctx, os.Stdout, cmd.AggregateArgs, cmd.Source)
 	default:
 		return fmt.Errorf("internal: unhandled cli dispatch for %q", cmd.Name)
 	}
