@@ -2,11 +2,15 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"sort"
 	"time"
 
+	"github.com/tt-a1i/tokenmeter/internal/collector"
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
 	"github.com/tt-a1i/tokenmeter/internal/render"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
@@ -114,6 +118,8 @@ func cliBucketToStorage(b Bucket) storage.AggregateBucket {
 		return storage.BucketWeek
 	case BucketMonthly:
 		return storage.BucketMonth
+	case BucketSession:
+		return storage.BucketSession
 	default:
 		return storage.BucketDay
 	}
@@ -126,6 +132,8 @@ func bucketKind(b Bucket) string {
 		return "weekly"
 	case BucketMonthly:
 		return "monthly"
+	case BucketSession:
+		return "session"
 	default:
 		return "daily"
 	}
@@ -301,6 +309,209 @@ func ParseDateFlagUntil(s string) (time.Time, error) {
 		return t, nil
 	}
 	return t.Add(24 * time.Hour), nil
+}
+
+// RunAggregateAllSource is the default daily/weekly/monthly path when the
+// user did NOT pass --no-scan. It pulls token_usage rows from SQLite
+// (Claude + Codex; the v1.0 baseline data) plus every registered batch
+// adapter, folds them in-memory into storage.AggregateUsageRow shape, and
+// hands them to the same convertAggregateRows + render path as RunAggregate
+// so the output is visually identical to --no-scan when no adapters are
+// installed.
+//
+// Error policy:
+//   - SQLite loader error is fatal (Claude/Codex is the baseline).
+//   - Adapter fs.ErrNotExist (user does not have the agent installed) is
+//     silently skipped.
+//   - Other adapter errors emit a stderr warning and skip that source.
+//
+// Known asymmetry: BucketWeekly uses Go's ISOWeek (Monday-based) in this
+// path; RunAggregate's SQL path uses SQLite strftime('%Y-W%W') which is
+// Sunday-based. Sunday rows can land in different week buckets between
+// the two paths. Daily and monthly are unaffected. Documented as a v1.1
+// limitation; resolution deferred to Phase B/C.
+func RunAggregateAllSource(ctx context.Context, w io.Writer, a AggregateArgs, sqliteLoader AggregateLoader, adapters map[string]AdapterLoadFn) error {
+	since, err := parseDateFlag(a.Shared.Since)
+	if err != nil {
+		return err
+	}
+	until, err := ParseDateFlagUntil(a.Shared.Until)
+	if err != nil {
+		return err
+	}
+	loc := time.UTC
+	if a.Shared.Timezone != "" {
+		parsed, err := time.LoadLocation(a.Shared.Timezone)
+		if err != nil {
+			return fmt.Errorf("invalid timezone %q: %w", a.Shared.Timezone, err)
+		}
+		loc = parsed
+	}
+	mode := pricing.ParseMode(a.Shared.Mode)
+
+	sqliteEntries, err := sqliteLoader.ListUsageForBlocksFiltered(ctx, since, until, a.Shared.Project)
+	if err != nil {
+		return err
+	}
+	all := append([]storage.TokenUsageEntry(nil), sqliteEntries...)
+
+	// Stable iteration over adapters so warning output and (in pathological
+	// duplicate-key cases) accumulation order are deterministic.
+	adapterNames := make([]string, 0, len(adapters))
+	for name := range adapters {
+		adapterNames = append(adapterNames, name)
+	}
+	sort.Strings(adapterNames)
+	for _, source := range adapterNames {
+		fn := adapters[source]
+		entries, err := fn(ctx, collector.AdapterOpts{
+			Since:    since,
+			Until:    until,
+			Timezone: a.Shared.Timezone,
+			Project:  a.Shared.Project,
+		})
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %s adapter failed: %v\n", source, err)
+			continue
+		}
+		for _, e := range entries {
+			// Defensive post-filter in case the adapter ignored opts.
+			// Matches SQL semantics: since is inclusive, until is the
+			// +24h exclusive upper bound (ParseDateFlagUntil), so the SQL
+			// `u.timestamp <= until` actually includes timestamps equal
+			// to until — mirror that with !After().
+			if !since.IsZero() && e.Timestamp.Before(since) {
+				continue
+			}
+			if !until.IsZero() && e.Timestamp.After(until) {
+				continue
+			}
+			// Project filter is intentionally NOT applied post-fn: most
+			// adapters cannot fill ProjectPath (their log formats do not
+			// carry workspace info), so post-filtering would silently
+			// drop legitimate rows. --project remains a Claude/Codex
+			// filter only.
+			all = append(all, storage.TokenUsageEntry{
+				SourceID:                 e.SessionID,
+				SessionID:                e.SessionID,
+				Timestamp:                e.Timestamp,
+				Model:                    e.Model,
+				InputTokens:              e.InputTokens,
+				OutputTokens:             e.OutputTokens,
+				CacheCreationInputTokens: e.CacheCreationInputTokens,
+				CacheReadInputTokens:     e.CacheReadInputTokens,
+				CostUSD:                  e.CostUSD,
+			})
+		}
+	}
+
+	needAutoFallback := mode == pricing.ModeAuto && !a.Shared.Breakdown
+	breakdown := a.Shared.Breakdown || needAutoFallback
+	aggRows := aggregateEntriesInMemory(all, a.Bucket, loc, breakdown)
+	rows := convertAggregateRows(aggRows, a.Shared.Breakdown, mode, needAutoFallback)
+	if a.Shared.Order == "desc" {
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Bucket > rows[j].Bucket })
+	}
+	return render.New().RenderAggregate(w, bucketKind(a.Bucket), rows, renderOpts(a.Shared, w))
+}
+
+// aggregateEntriesInMemory folds token_usage entries into AggregateUsageRow
+// shape so RunAggregateAllSource can reuse convertAggregateRows + the
+// boxed renderer. Mirrors storage.AggregateUsage's grouping contract:
+// breakdown=true emits one row per (bucket, model); breakdown=false emits
+// one row per bucket with Models[] populated.
+func aggregateEntriesInMemory(entries []storage.TokenUsageEntry, bucket Bucket, loc *time.Location, breakdown bool) []storage.AggregateUsageRow {
+	type key struct{ bucket, model string }
+	type acc struct {
+		models       []string
+		in, out, cc, cr int64
+		cost         float64
+		lastActivity time.Time
+	}
+	perKey := map[key]*acc{}
+	seen := map[key]bool{}
+	var keyOrder []key
+
+	bucketKey := func(t time.Time, sessionID string) string {
+		tt := t.In(loc)
+		switch bucket {
+		case BucketWeekly:
+			y, w := tt.ISOWeek()
+			return fmt.Sprintf("%04d-W%02d", y, w)
+		case BucketMonthly:
+			return tt.Format("2006-01")
+		case BucketSession:
+			return sessionID
+		default:
+			return tt.Format("2006-01-02")
+		}
+	}
+
+	for _, e := range entries {
+		bk := bucketKey(e.Timestamp, e.SessionID)
+		modelKey := ""
+		if breakdown {
+			modelKey = e.Model
+		}
+		k := key{bk, modelKey}
+		if !seen[k] {
+			seen[k] = true
+			keyOrder = append(keyOrder, k)
+		}
+		a := perKey[k]
+		if a == nil {
+			a = &acc{}
+			perKey[k] = a
+		}
+		if !breakdown {
+			a.models = appendUnique(a.models, e.Model)
+		}
+		a.in += e.InputTokens
+		a.out += e.OutputTokens
+		a.cc += e.CacheCreationInputTokens
+		a.cr += e.CacheReadInputTokens
+		a.cost += e.CostUSD
+		if e.Timestamp.After(a.lastActivity) {
+			a.lastActivity = e.Timestamp
+		}
+	}
+
+	// Match storage.AggregateUsage's ORDER BY: bucket ASC (then model ASC
+	// when breakdown). Stable sort not required — keys are unique by
+	// construction.
+	sort.Slice(keyOrder, func(i, j int) bool {
+		if keyOrder[i].bucket != keyOrder[j].bucket {
+			return keyOrder[i].bucket < keyOrder[j].bucket
+		}
+		return keyOrder[i].model < keyOrder[j].model
+	})
+
+	out := make([]storage.AggregateUsageRow, 0, len(keyOrder))
+	for _, k := range keyOrder {
+		a := perKey[k]
+		row := storage.AggregateUsageRow{
+			Bucket:            k.bucket,
+			InputTokens:       a.in,
+			OutputTokens:      a.out,
+			CacheCreateTokens: a.cc,
+			CacheReadTokens:   a.cr,
+			Cost:              a.cost,
+		}
+		if breakdown {
+			row.Model = k.model
+		} else {
+			sort.Strings(a.models)
+			row.Models = a.models
+		}
+		if bucket == BucketSession {
+			row.LastActivity = a.lastActivity
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // applyPricingMode rewrites each entry's CostUSD according to mode. Kept

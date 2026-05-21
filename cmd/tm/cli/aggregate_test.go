@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/cmd/tm/cli"
+	"github.com/tt-a1i/tokenmeter/internal/collector"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
 
@@ -365,5 +366,48 @@ func TestRunAggregateBreakdownForwardsFilter(t *testing.T) {
 	}
 	if !stub.captured.Breakdown {
 		t.Errorf("expected filter.Breakdown=true")
+	}
+}
+
+// TestRunAggregateAllSourceMerges drives RunAggregateAllSource (the
+// default daily/weekly/monthly path when --no-scan is not set) with a
+// stub SQLite loader plus one registered adapter ("amp"). The two
+// sources contribute entries with the same model on the same day, so
+// the merged daily row should sum the cost ($0.01 + $0.02 = $0.03).
+//
+// Note: header asserted as "DATE" — the live render path uses go-pretty
+// table.StyleRounded whose default header transform uppercases column
+// names. The claude-sonnet-4-6 model token doubles as a merge invariant
+// (both sources contribute this model so it must appear in the row).
+func TestRunAggregateAllSourceMerges(t *testing.T) {
+	now := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
+	sqliteEntries := []storage.TokenUsageEntry{
+		{SourceID: "c1", SessionID: "s-claude", Model: "claude-sonnet-4-6",
+			Timestamp: now, InputTokens: 100, OutputTokens: 50, CostUSD: 0.01},
+	}
+	sqliteLoader := stubAggregateLoader{rows: sqliteEntries}
+	ampEntries := []collector.UsageEntry{
+		{Source: "amp", SessionID: "s-amp", Model: "claude-sonnet-4-6",
+			Timestamp: now, InputTokens: 200, OutputTokens: 100, CostUSD: 0.02},
+	}
+	ampFn := func(_ context.Context, _ collector.AdapterOpts) ([]collector.UsageEntry, error) {
+		return ampEntries, nil
+	}
+	var out bytes.Buffer
+	err := cli.RunAggregateAllSource(context.Background(), &out, cli.AggregateArgs{
+		Shared: cli.Shared{},
+		Bucket: cli.BucketDaily,
+	}, sqliteLoader, map[string]cli.AdapterLoadFn{"amp": ampFn})
+	if err != nil {
+		t.Fatalf("RunAggregateAllSource: %v", err)
+	}
+	if !strings.Contains(out.String(), "DATE") {
+		t.Fatalf("missing DATE header in boxed table: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "claude-sonnet-4-6") {
+		t.Fatalf("merged row missing model: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "$0.03") {
+		t.Fatalf("merged cost not in output (expected $0.01 sqlite + $0.02 amp = $0.03): %q", out.String())
 	}
 }

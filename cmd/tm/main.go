@@ -243,7 +243,10 @@ func runCLIDispatch(argv []string) error {
 	now := time.Now()
 	switch cmd.Name {
 	case "daily", "weekly", "monthly":
-		return cli.RunAggregate(ctx, os.Stdout, cmd.AggregateArgs, db)
+		if cmd.Shared.NoScan {
+			return cli.RunAggregate(ctx, os.Stdout, cmd.AggregateArgs, db)
+		}
+		return cli.RunAggregateAllSource(ctx, os.Stdout, cmd.AggregateArgs, db, cli.AllAdapters)
 	case "session":
 		return cli.RunSession(ctx, os.Stdout, cmd.SessionArgs, db)
 	case "blocks":
