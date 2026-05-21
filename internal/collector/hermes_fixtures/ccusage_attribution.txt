@@ -1,0 +1,22 @@
+Hermes adapter fixture schema borrowed from ccusage v20 (MIT License)
+https://github.com/ryoppippi/ccusage
+
+Source: rust/crates/ccusage/src/adapter/hermes.rs
+  - Prepared-statement SELECT in load_state_db_entries (copied verbatim
+    into hermes.go::hermesSessionQuery).
+  - tests::create_state_db CREATE TABLE statement (copied verbatim into
+    hermes_test.go::hermesFixtureSchema for in-test DB synthesis).
+
+Fixture data layout (built dynamically by hermes_test.go::setupHermesFixture):
+
+  $TempDir/
+    state.db    <- SQLite database with one "sessions" table populated
+                   from the ccusage test vector
+                   (loads_billable_hermes_sessions_from_state_db).
+
+No binary fixture file is checked in — each test mints a DB via
+sql.Open("sqlite", path) and disposes via t.TempDir() cleanup.
+
+Register the adapter via cmd/tm/cli/registry.go AllAdapters["hermes"].
+Lookup paths under default $HOME/.hermes/state.db; override via
+$HERMES_HOME (comma-separated list).
