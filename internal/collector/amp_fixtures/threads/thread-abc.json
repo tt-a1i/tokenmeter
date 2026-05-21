@@ -1,0 +1,16 @@
+{
+  "id": "thread-abc",
+  "messages": [
+    {"role": "user", "messageId": 0, "content": "hi"},
+    {"role": "assistant", "messageId": 1, "usage": {"cacheCreationInputTokens": 1024, "cacheReadInputTokens": 8192}},
+    {"role": "user", "messageId": 2, "content": "follow up"},
+    {"role": "assistant", "messageId": 3, "usage": {"cacheCreationInputTokens": 256, "cacheReadInputTokens": 4096}}
+  ],
+  "usageLedger": {
+    "events": [
+      {"id": "ev-1", "timestamp": "2026-04-15T10:30:00.000Z", "model": "gpt-5-amp", "credits": 0.012, "tokens": {"input": 500, "output": 250, "total": 750}, "toMessageId": 1},
+      {"id": "ev-2", "timestamp": "2026-04-15T10:32:00.000Z", "model": "gpt-5-amp", "credits": 0.006, "tokens": {"input": 200, "output": 100, "total": 300}, "toMessageId": 3},
+      {"id": "ev-3", "timestamp": "2026-04-15T10:35:00.000Z", "model": "gpt-5-amp", "credits": 0.003, "tokens": {"input": 100, "output": 50, "total": 150}}
+    ]
+  }
+}

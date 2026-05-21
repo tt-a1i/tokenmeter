@@ -1,0 +1,8 @@
+Fixture inspired by ccusage v20 (MIT License) — specifically the
+`read_thread_file` flow and the `falls_back_to_total_tokens_when_amp_parts_are_missing`
+inline test in rust/crates/ccusage/src/adapter/amp.rs.
+
+This sample is hand-crafted to fully exercise the events ↔ messages JOIN:
+two events with matching toMessageId values pick up cache token totals
+from the assistant messages, plus a third event with no toMessageId so
+the zero-cache branch is exercised in the same run.
