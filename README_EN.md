@@ -107,6 +107,12 @@ tm web               # browser dashboard (separate process)
 
 Use Claude Code or Codex normally — TokenMeter captures everything in the background. See [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md) for the full old→new command mapping.
 
+TokenMeter v1.1 adds 13 batch-only data sources: OpenCode, Amp, Gemini CLI,
+GitHub Copilot CLI, Goose, Codebuff, Hermes, Kilo, Kimi, OpenClaw, pi-agent,
+Droid, Qwen. `tm daily` scans every installed agent by default; pass
+`--no-scan` to restore the SQLite-only behavior (Claude + Codex only).
+Per-source subcommands and log paths are in [docs/MIGRATION-v1.1.md](docs/MIGRATION-v1.1.md).
+
 ## Commands
 
 | Command | Description |

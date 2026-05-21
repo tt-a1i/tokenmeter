@@ -3,6 +3,74 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
+## v1.1.0 — 2026-05-22 (unreleased)
+
+### Added — 13 new data sources (ccusage parity)
+- **OpenCode** (`tm opencode daily`) — `~/.local/share/opencode/` / `OPENCODE_DATA_DIR`
+- **Amp** (`tm amp daily`) — `~/.local/share/amp/threads/*.json` / `AMP_DATA_DIR`
+- **Gemini CLI** (`tm gemini daily`) — `~/.gemini/tmp/chats/*` / `GEMINI_DATA_DIR`
+- **GitHub Copilot CLI** (`tm copilot daily`) — `~/.copilot/otel/*.jsonl` / `COPILOT_OTEL_FILE_EXPORTER_PATH`
+- **Goose** (`tm goose daily`) — `~/.local/share/goose/sessions/<db>` (SQLite) / `GOOSE_PATH_ROOT`
+- **Codebuff** (`tm codebuff daily`) — `~/.config/<channel>/projects/...` / `CODEBUFF_DATA_DIR`
+- **Hermes** (`tm hermes daily`) — `~/.hermes/state.db` (SQLite) / `HERMES_HOME`
+- **Kilo** (`tm kilo daily`) — `~/.local/share/kilo/<db>` (SQLite) / `KILO_DATA_DIR`
+- **Kimi** (`tm kimi daily`) — `~/.kimi/sessions/...` / `KIMI_DATA_DIR`
+- **OpenClaw** (`tm openclaw daily`) — `~/.openclaw/`, `~/.clawdbot/`, `~/.moltbot/`, `~/.moldbot/` / `OPENCLAW_DIR`
+- **pi-agent** (`tm pi daily`) — `~/.pi/agent/sessions/...` / `PI_AGENT_DIR`
+- **Droid** (`tm droid daily`) — `~/.factory/sessions/*.settings.json` / `DROID_SESSIONS_DIR`
+- **Qwen** (`tm qwen daily`) — `~/.qwen/projects/<project>/chats/*.jsonl` / `QWEN_DATA_DIR`
+
+All 13 sources support `daily` / `weekly` / `monthly` / `session` buckets and honor
+`--since` / `--until` / `--json` / `--breakdown` / `--order` / `--mode` /
+`--timezone` / `--no-color`.
+
+### Changed
+- `tm daily` (no source) now scans the 13 new batch-only sources in addition
+  to the SQLite (Claude + Codex) store. Missing log directories are silently
+  skipped (fast path: `< 5 ms`). Pass `--no-scan` to restore the v1.0.x
+  SQLite-only behavior for scripts that depend on the old default.
+
+### Internal
+- Adapter pattern is flat: each new source has `internal/collector/<name>.go`
+  exporting `Load<Name>Entries(ctx, opts)`. No `Adapter` trait — matches ccusage
+  upstream choice (different per-agent log formats make a shared interface
+  leaky). See `docs/MIGRATION-v1.1.md` for migration notes.
+- daemon, SQLite schema, and Claude / Codex collection paths unchanged.
+
+### Known limitations / known differences vs ccusage upstream
+- **Reasoning tokens fold into OutputTokens** for Gemini / Goose / Hermes /
+  Kilo / Copilot / Qwen / Pi. `UsageEntry` has no dedicated extra-total slot;
+  totals match ccusage but `outputTokens` is inflated by the reasoning count.
+  Per-bucket / per-model breakdowns are unaffected.
+- **OpenCode SQLite-only installs are not visible in v1.1**. The v1.1 adapter
+  reads the file-tree format only; a SQLite-only OpenCode store (newer
+  install) needs the v1.1.1 follow-up. Workaround: pin OpenCode to a build
+  that still writes the file tree.
+- **Copilot OTEL cross-source dedup not implemented**. ccusage suppresses
+  lower-priority OTEL spans (chat > inference > agent_turn > agent_summary)
+  when they overlap by `trace_id` / `response_id`; the v1.1 Go adapter emits
+  every `gen_ai.usage.*` row it finds, so production layouts with overlapping
+  span types may double-count. Track for v1.1.x.
+- **Codebuff `runState.sessionState.mainAgentState.messageHistory` fallback
+  not implemented**. A rare branch ccusage uses when `metadata.usage` and
+  `metadata.codebuff.usage` are both missing.
+- **Droid sidecar `.jsonl` model fallback** is not yet wired. When the model
+  is missing from the session JSON, the row is dropped (ccusage tries an
+  adjacent log file for the inferred model first).
+- **Costs are recomputed at the cli pricing layer**. Most adapters set
+  `CostUSD = 0` and let `--mode auto / calculate` reach `pricing.Resolve`;
+  ccusage carries provider-native costs (credits, USD) directly on the
+  source row. `--mode display` therefore shows `$0` for batch adapters with
+  no native USD cost — switch to `--mode auto` (default) or `--mode calculate`
+  for non-zero values.
+- **`pricing.Resolve` provider/model candidate fallback** is single-key only.
+  ccusage tries `<model>` then `qwen/<model>` then `alibaba/<model>` etc.;
+  v1.1 looks up the verbatim model name only. Track for v1.1.x.
+- **`--project <path>`** is honored by Claude / Codex (sessions.cwd join).
+  Most batch adapters carry no reliable workspace path in their logs and
+  silently ignore `--project`. The per-source support matrix lives in
+  `docs/MIGRATION-v1.1.md`.
+
 ## v1.0.3 — 2026-05-21
 
 ### Performance

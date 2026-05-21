@@ -113,6 +113,11 @@ tm web               # 浏览器 dashboard（独立进程）
 
 正常使用 Claude Code 或 Codex，TokenMeter 在后台自动采集所有数据。完整命令对照参见 [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md)。
 
+TokenMeter v1.1 还支持 13 个 batch-only 数据源：OpenCode、Amp、Gemini CLI、GitHub
+Copilot CLI、Goose、Codebuff、Hermes、Kilo、Kimi、OpenClaw、pi-agent、Droid、Qwen。
+`tm daily` 默认扫所有已安装的 agent，加 `--no-scan` 退回到仅 SQLite (Claude + Codex)。
+具体每个 source 的子命令和数据路径见 [docs/MIGRATION-v1.1.md](docs/MIGRATION-v1.1.md)。
+
 ## 命令
 
 | 命令 | 说明 |
