@@ -72,12 +72,21 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 		loc = parsed
 	}
 
+	mode := pricing.ParseMode(a.Shared.Mode)
+	// When the user asked for ModeAuto without --breakdown, we still need
+	// per-model rows from storage so each (bucket, model) row can be
+	// inspected for the zero-cost fallback. Without this, a mixed-model
+	// bucket whose SUM > 0 (Claude $X + Codex $0 → SUM $X) silently drops
+	// the Codex share. We then fold the per-model rows back into one row
+	// per bucket so the user-facing view stays unchanged.
+	needAutoFallback := mode == pricing.ModeAuto && !a.Shared.Breakdown
+
 	filter := storage.AggregateFilter{
 		Since:     since,
 		Until:     until,
 		Project:   a.Shared.Project,
 		Bucket:    cliBucketToStorage(a.Bucket),
-		Breakdown: a.Shared.Breakdown,
+		Breakdown: a.Shared.Breakdown || needAutoFallback,
 		Location:  loc,
 	}
 	aggRows, err := ul.AggregateUsage(ctx, filter)
@@ -85,8 +94,7 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 		return err
 	}
 
-	mode := pricing.ParseMode(a.Shared.Mode)
-	rows := convertAggregateRows(aggRows, a.Shared.Breakdown, mode)
+	rows := convertAggregateRows(aggRows, a.Shared.Breakdown, mode, needAutoFallback)
 
 	if a.Shared.Order == "desc" {
 		sort.Slice(rows, func(i, j int) bool { return rows[i].Bucket > rows[j].Bucket })
@@ -126,7 +134,43 @@ func bucketKind(b Bucket) string {
 // bucket cost is zero (matching v1.0.1 entry-level applyPricingMode semantics
 // — Codex zero-cost rows still surface a value); ModeDisplay leaves cost as
 // SUM-ed by storage.
-func convertAggregateRows(in []storage.AggregateUsageRow, breakdown bool, mode pricing.Mode) []render.AggregateRow {
+//
+// foldForAuto handles the ModeAuto-without-breakdown case: storage is asked
+// for per-(bucket, model) rows so each row can independently trigger the
+// zero-cost fallback, but the output collapses to one render row per bucket
+// (no user-visible Breakdown[]) so the default daily view stays identical.
+func convertAggregateRows(in []storage.AggregateUsageRow, breakdown bool, mode pricing.Mode, foldForAuto bool) []render.AggregateRow {
+	if foldForAuto {
+		byBucket := map[string]*render.AggregateRow{}
+		order := []string{}
+		for _, r := range in {
+			row, ok := byBucket[r.Bucket]
+			if !ok {
+				row = &render.AggregateRow{Bucket: r.Bucket}
+				byBucket[r.Bucket] = row
+				order = append(order, r.Bucket)
+			}
+			cost := r.Cost
+			if mode == pricing.ModeCalculate || (mode == pricing.ModeAuto && cost == 0) {
+				cost = recalculateCost(r)
+			}
+			row.Models = appendUnique(row.Models, r.Model)
+			row.InputTokens += r.InputTokens
+			row.OutputTokens += r.OutputTokens
+			row.CacheCreateTokens += r.CacheCreateTokens
+			row.CacheReadTokens += r.CacheReadTokens
+			row.TotalTokens = row.InputTokens + row.OutputTokens + row.CacheCreateTokens + row.CacheReadTokens
+			row.Cost += cost
+			// Deliberately NOT populating row.Breakdown — user didn't ask
+			// for --breakdown; the per-model rows were a means to the end
+			// of correct cost.
+		}
+		out := make([]render.AggregateRow, 0, len(order))
+		for _, k := range order {
+			out = append(out, *byBucket[k])
+		}
+		return out
+	}
 	if !breakdown {
 		out := make([]render.AggregateRow, 0, len(in))
 		for _, r := range in {

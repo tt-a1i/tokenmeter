@@ -284,6 +284,75 @@ func TestRunAggregateModeCalculateBreakdownPrecision(t *testing.T) {
 	}
 }
 
+func TestRunAggregateModeAutoMixedBucket(t *testing.T) {
+	// Mixed-model day: Claude entry has cost, Codex entry has cost=0. With
+	// only bucket-level Auto fallback, the Codex share is silently dropped
+	// because the bucket SUM (= 10) is non-zero. The fix forces cli to
+	// pull per-(bucket, model) rows and recompute per row, so totalCost
+	// must exceed the Claude-only sum.
+	rows := []storage.AggregateUsageRow{
+		{Bucket: "2026-05-19", Model: "claude-opus-4-7", InputTokens: 1_000_000, Cost: 10},
+		{Bucket: "2026-05-19", Model: "gpt-5-codex", InputTokens: 1_000_000, Cost: 0},
+	}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+		Shared: cli.Shared{Mode: "auto", JSON: true},
+		Bucket: cli.BucketDaily,
+	}, stubAggregateLoader{aggRows: rows}); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Daily []struct {
+			Date      string  `json:"date"`
+			TotalCost float64 `json:"totalCost"`
+		} `json:"daily"`
+		Totals struct {
+			TotalCost float64 `json:"totalCost"`
+		} `json:"totals"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(got.Daily) != 1 {
+		t.Fatalf("expected 1 daily row, got %d", len(got.Daily))
+	}
+	if got.Daily[0].TotalCost <= 10 {
+		t.Fatalf("Codex zero-cost share must recompute under Auto; got totalCost=%v (Claude alone was 10)", got.Daily[0].TotalCost)
+	}
+}
+
+func TestRunAggregateModeAutoForcesBreakdownInFilter(t *testing.T) {
+	// Mode=auto without --breakdown still needs per-(bucket, model) rows
+	// from storage to trigger the per-row fallback. cli must set
+	// filter.Breakdown=true regardless of user choice.
+	stub := &capturingLoader{}
+	if err := cli.RunAggregate(context.Background(), io.Discard, cli.AggregateArgs{
+		Shared: cli.Shared{Mode: "auto"},
+		Bucket: cli.BucketDaily,
+	}, stub); err != nil {
+		t.Fatal(err)
+	}
+	if !stub.captured.Breakdown {
+		t.Errorf("filter.Breakdown must be forced true under Mode=auto; got false")
+	}
+}
+
+func TestRunAggregateModeDisplayKeepsFilterBreakdownFalse(t *testing.T) {
+	// Sanity: Mode=display (or anything other than Auto) does NOT touch
+	// filter.Breakdown when user didn't ask. Avoids needlessly pulling
+	// per-model rows from storage.
+	stub := &capturingLoader{}
+	if err := cli.RunAggregate(context.Background(), io.Discard, cli.AggregateArgs{
+		Shared: cli.Shared{Mode: "display"},
+		Bucket: cli.BucketDaily,
+	}, stub); err != nil {
+		t.Fatal(err)
+	}
+	if stub.captured.Breakdown {
+		t.Errorf("filter.Breakdown must stay false under Mode=display without --breakdown; got true")
+	}
+}
+
 func TestRunAggregateBreakdownForwardsFilter(t *testing.T) {
 	// AggregateFilter.Breakdown must equal Shared.Breakdown so SQL adds the
 	// per-model GROUP BY column.

@@ -161,6 +161,49 @@ func TestRunSessionModeAutoFallsBackOnZero(t *testing.T) {
 	}
 }
 
+func TestRunSessionModeAutoMixedSession(t *testing.T) {
+	// Same parity bug as RunAggregate: a session with mixed models, one of
+	// which has cost=0, must recompute the zero-cost share under Auto.
+	rows := []storage.AggregateUsageRow{
+		{Bucket: "s1", Model: "claude-opus-4-7", InputTokens: 1_000_000, Cost: 10,
+			LastActivity: mustTime("2026-05-19T10:00:00Z")},
+		{Bucket: "s1", Model: "gpt-5-codex", InputTokens: 1_000_000, Cost: 0,
+			LastActivity: mustTime("2026-05-19T11:00:00Z")},
+	}
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf,
+		cli.SessionArgs{Shared: cli.Shared{Mode: "auto", JSON: true}},
+		stubAggregateLoader{aggRows: rows}); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Sessions []struct {
+			SessionID string  `json:"sessionId"`
+			TotalCost float64 `json:"totalCost"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(got.Sessions) != 1 || got.Sessions[0].SessionID != "s1" {
+		t.Fatalf("expected 1 session s1, got %+v", got.Sessions)
+	}
+	if got.Sessions[0].TotalCost <= 10 {
+		t.Fatalf("Codex zero-cost share must recompute under Auto; got totalCost=%v (Claude alone was 10)", got.Sessions[0].TotalCost)
+	}
+}
+
+func TestRunSessionModeAutoForcesBreakdownInFilter(t *testing.T) {
+	stub := &capturingLoader{}
+	if err := cli.RunSession(context.Background(), &bytes.Buffer{},
+		cli.SessionArgs{Shared: cli.Shared{Mode: "auto"}}, stub); err != nil {
+		t.Fatal(err)
+	}
+	if !stub.captured.Breakdown {
+		t.Errorf("filter.Breakdown must be forced true under Mode=auto; got false")
+	}
+}
+
 func TestRunSessionForwardsFilterToBucketSession(t *testing.T) {
 	// RunSession must always tell storage to GROUP BY session_id, even
 	// when --breakdown is on (per-model rows are folded back inside cli).

@@ -55,12 +55,20 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 		loc = parsed
 	}
 
+	mode := pricing.ParseMode(a.Shared.Mode)
+	// Same fix as RunAggregate: ModeAuto without --breakdown silently drops
+	// per-model zero-cost shares when the bucket SUM > 0. Force storage to
+	// return per-(sessionId, model) rows so each can independently trigger
+	// the fallback, then fold them back into one row per session for
+	// rendering. See convertSessionRows foldForAuto branch.
+	needAutoFallback := mode == pricing.ModeAuto && !a.Shared.Breakdown
+
 	filter := storage.AggregateFilter{
 		Since:     since,
 		Until:     until,
 		Project:   a.Shared.Project,
 		Bucket:    storage.BucketSession,
-		Breakdown: a.Shared.Breakdown,
+		Breakdown: a.Shared.Breakdown || needAutoFallback,
 		Location:  loc,
 	}
 	aggRows, err := ul.AggregateUsage(ctx, filter)
@@ -68,8 +76,7 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 		return err
 	}
 
-	mode := pricing.ParseMode(a.Shared.Mode)
-	rows := convertSessionRows(aggRows, a.Shared.Breakdown, mode, a.SessionID)
+	rows := convertSessionRows(aggRows, a.Shared.Breakdown, mode, a.SessionID, needAutoFallback)
 
 	if a.Shared.Order == "desc" {
 		sort.Slice(rows, func(i, j int) bool { return rows[i].SessionID > rows[j].SessionID })
@@ -87,7 +94,51 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 // source bucket cost is 0 (Codex zero-cost fallback parity); Display leaves
 // cost as SUM-ed by storage. filterID restricts the output to one session
 // when SessionArgs.SessionID is set.
-func convertSessionRows(in []storage.AggregateUsageRow, breakdown bool, mode pricing.Mode, filterID string) []render.SessionRow {
+//
+// foldForAuto mirrors RunAggregate's strategy for ModeAuto without
+// --breakdown: per-(sessionId, model) rows come back from storage so each
+// independently triggers the zero-cost fallback, then collapse to one
+// SessionRow per session (no user-visible Breakdown[]).
+func convertSessionRows(in []storage.AggregateUsageRow, breakdown bool, mode pricing.Mode, filterID string, foldForAuto bool) []render.SessionRow {
+	if foldForAuto {
+		bySession := map[string]*render.SessionRow{}
+		order := []string{}
+		for _, r := range in {
+			if filterID != "" && r.Bucket != filterID {
+				continue
+			}
+			row, ok := bySession[r.Bucket]
+			if !ok {
+				row = &render.SessionRow{
+					SessionID:    r.Bucket,
+					ProjectPath:  r.Project,
+					LastActivity: r.LastActivity,
+				}
+				bySession[r.Bucket] = row
+				order = append(order, r.Bucket)
+			}
+			cost := r.Cost
+			if mode == pricing.ModeCalculate || (mode == pricing.ModeAuto && cost == 0) {
+				cost = recalculateCost(r)
+			}
+			row.Models = appendUnique(row.Models, r.Model)
+			row.InputTokens += r.InputTokens
+			row.OutputTokens += r.OutputTokens
+			row.CacheCreateTokens += r.CacheCreateTokens
+			row.CacheReadTokens += r.CacheReadTokens
+			row.TotalTokens = row.InputTokens + row.OutputTokens + row.CacheCreateTokens + row.CacheReadTokens
+			row.Cost += cost
+			if r.LastActivity.After(row.LastActivity) {
+				row.LastActivity = r.LastActivity
+			}
+			// Deliberately NOT populating row.Breakdown.
+		}
+		out := make([]render.SessionRow, 0, len(order))
+		for _, k := range order {
+			out = append(out, *bySession[k])
+		}
+		return out
+	}
 	if !breakdown {
 		out := make([]render.SessionRow, 0, len(in))
 		for _, r := range in {
