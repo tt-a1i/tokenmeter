@@ -15,6 +15,7 @@ import (
 // output, matching the v1.0.x behavior users see today.
 var AllAdapters = map[string]AdapterLoadFn{
 	"amp":      collector.LoadAmpEntries,
+	"copilot":  collector.LoadCopilotEntries,
 	"gemini":   collector.LoadGeminiEntries,
 	"goose":    collector.LoadGooseEntries,
 	"kimi":     collector.LoadKimiEntries,

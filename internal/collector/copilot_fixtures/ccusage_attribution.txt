@@ -1,0 +1,8 @@
+Fixture data inspired by ccusage v20 (MIT License) — specifically the
+`parses_copilot_chat_spans` inline test in
+rust/crates/ccusage/src/adapter/copilot.rs.
+
+The chat-span record is borrowed verbatim so the Go cached-overlap
+subtraction matches the reference numbers (input 19452, cache_read 123 →
+display input 19329). A second log-style row exercises the path where
+the `attributes` map is the only thing carrying token totals.
