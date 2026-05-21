@@ -1,0 +1,5 @@
+Fixture borrowed from ccusage v20 (MIT License).
+https://github.com/ryoppippi/ccusage — rust/crates/ccusage/src/adapter/openclaw.rs
+specifically the `loads_assistant_usage_and_uses_model_change_events` test
+case in the inline tests module. A second assistant usage record was added
+to exercise the model-change carry-over across messages.

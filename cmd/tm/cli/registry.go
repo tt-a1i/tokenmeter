@@ -1,5 +1,9 @@
 package cli
 
+import (
+	"github.com/tt-a1i/tokenmeter/internal/collector"
+)
+
 // AllAdapters is the canonical registry consumed by RunAggregateAllSource.
 // Phase B adapter task implementations populate this map as they land:
 //
@@ -7,7 +11,8 @@ package cli
 //	AllAdapters["opencode"] = collector.LoadOpencodeEntries
 //	...
 //
-// The empty map is intentional during Phase A — RunAggregateAllSource
-// degrades gracefully to SQLite-only output when no adapters are
-// registered, which is the v1.0.x behavior users see today.
-var AllAdapters = map[string]AdapterLoadFn{}
+// An empty map degrades RunAggregateAllSource gracefully to SQLite-only
+// output, matching the v1.0.x behavior users see today.
+var AllAdapters = map[string]AdapterLoadFn{
+	"openclaw": collector.LoadOpenClawEntries,
+}

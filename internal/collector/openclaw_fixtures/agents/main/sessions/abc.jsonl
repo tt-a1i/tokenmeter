@@ -1,0 +1,3 @@
+{"type":"model_change","provider":"openai-codex","modelId":"gpt-5.2"}
+{"type":"message","message":{"role":"assistant","usage":{"input":1660,"output":55,"cacheRead":108928,"cost":{"total":0.02}},"timestamp":1769753935279}}
+{"type":"message","message":{"role":"assistant","usage":{"input":3200,"output":118,"cacheRead":204800,"cacheWrite":256,"cost":{"total":0.041}},"timestamp":1769754012345}}
