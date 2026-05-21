@@ -89,3 +89,62 @@ adapter.
 autodetection plus the `NO_COLOR` and `FORCE_COLOR` environment variables
 (see https://no-color.org/). Resolution order: JSON output → `--no-color`
 flag → `NO_COLOR` env → `FORCE_COLOR` env → TTY check → off.
+
+## v1.0.2 changes
+
+v1.0.2 pushes the daily / weekly / monthly / session aggregation down to
+SQL and ships two correctness fixes that affect how costs are reported.
+The user-facing JSON / table envelopes are unchanged.
+
+### `Mode=auto` correctness restored (post-push-down regression fix)
+
+- **v1.0.1:** every entry was re-priced before aggregation. Codex rows
+  with `cost_usd = 0` would fall back to a calculated cost, so a mixed
+  day (Claude row with cost + Codex row with zero cost) reported the
+  sum of both.
+- **v1.0.2-rc:** aggregation moved to SQL, the `cost_usd` SUM was
+  inspected once per bucket, and ModeAuto only fell back when the
+  bucket SUM itself was zero. Mixed days silently dropped the Codex
+  share — a clean ~18% under-report on the local test DB ($57 769 vs
+  $69 284 with `--breakdown`).
+- **v1.0.2:** cli now transparently flips `filter.Breakdown=true`
+  whenever `Mode=auto` is requested without an explicit `--breakdown`,
+  walks the per-(bucket, model) rows so each can independently trigger
+  the zero-cost fallback, then folds back to one render row per bucket.
+  The view is identical to v1.0.1; only the cost numbers match
+  `--breakdown` now.
+
+No action required. `tm daily --mode auto` after v1.0.2 will agree with
+`tm daily --breakdown --mode auto` to the cent.
+
+### `Mode=calculate` precision (small approximation, opt-in)
+
+- **v1.0.1:** cli re-priced every entry before aggregation.
+- **v1.0.2:** cli re-prices each SQL aggregate row. For single-model
+  buckets the result is identical. For mixed-model buckets in the
+  non-breakdown view, the recalculate uses the first model in the
+  bucket's distinct model list as a unit-price proxy — accuracy is
+  within $0.01 for typical workloads. Pass `--breakdown` for exact
+  per-model recompute.
+
+### `blocks --breakdown` is now wired
+
+`tm blocks --breakdown` was accepted but ignored in v1.0.1. v1.0.2
+emits `└─ <model>` rows under each block (boxed table) and a
+`modelBreakdowns[]` array per block (JSON). Cost share is approximated
+by token-occupancy because block cost is only persisted at the block
+level.
+
+### `session --json` exposes `projectPath` and `lastActivity`
+
+New fields, populated straight from SQL `MAX(sessions.cwd)` and
+`MAX(token_usage.timestamp)`. Scripts that hard-code the JSON key list
+should either ignore unknown fields or explicitly select the ones they
+need.
+
+### `--timezone <IANA>` DST limitation
+
+`--timezone <IANA>` resolves the offset at query time. For DST regions
+(e.g. `America/Los_Angeles`), historical rows that crossed a DST
+boundary may be off by 1 hour. Use UTC or a fixed-offset zone when DST
+accuracy matters.

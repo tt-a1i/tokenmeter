@@ -3,6 +3,31 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
+## v1.0.2 — 2026-05-21
+
+### Performance
+- SQL push-down for `daily` / `weekly` / `monthly` / `session`:
+  daily warm 1.22s → 0.99s (1.23×); weekly/monthly ~1.14×; session ~1.06×.
+  blocks unchanged (5h identification needs raw timeline).
+- See `docs/perf/v1.0.2-baseline.md` for full pprof + benchmark breakdown
+  and v1.0.3 optimization candidates (covering index est. 30–50% further win).
+
+### Fixed
+- `Mode=auto` 在 non-breakdown 路径下不再 silent 丢失零成本 entries 的 fallback
+  recompute。v1.0.1 是 per-entry fallback；push-down 后 bucket SUM 会掩盖个体零成本
+  行。修复：cli 在 Mode=auto && !user-Breakdown 时透明强制 storage filter.Breakdown=true，
+  渲染时按 bucket 折叠回单行（用户视图不变）但 cost 按 (bucket, model) 重算。混合天
+  cost 可恢复 ~$11k 量级真实金额（实测本地 DB 由 $57769 修正为 $69284）。
+
+### Added
+- `blocks --breakdown` 嵌套显示 per-model 子行（v1.0.1 known limitation 补齐）。
+- `session --json` 输出含 `projectPath` / `lastActivity` 字段（来自 SQL
+  `MAX(s.cwd)` / `MAX(u.timestamp)`）。
+
+### Known limitations (carry-forward)
+- `--timezone <IANA>` 用查询时刻的 UTC offset；DST 区跨 DST 边界的历史数据可能
+  ±1h 误分桶。Workaround：UTC 或固定 offset alias。
+
 ## v1.0.1 — 2026-05-20
 
 ### Added
