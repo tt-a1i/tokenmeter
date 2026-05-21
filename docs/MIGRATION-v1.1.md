@@ -10,7 +10,7 @@ your scripts depend on `tm daily` returning only Claude + Codex data, add
 ## New subcommands
 
 Each of these 13 sources now has full `daily / weekly / monthly / session`
-bucket support, identical to `tm claude daily` and `tm codex daily`:
+bucket support:
 
 | Source | Subcommand prefix | Log location | Env override |
 |---|---|---|---|
@@ -35,9 +35,11 @@ bucket support, identical to `tm claude daily` and `tm codex daily`:
 above. Adapters whose log directory does not exist are silently skipped
 (`< 5 ms` overhead per missing source).
 
-If you have a script that expects only Claude + Codex rows, use one of:
+If you have a script that expects only Claude + Codex rows, use:
 - `tm daily --no-scan` — explicitly skip batch adapters
-- `tm claude daily` and `tm codex daily` — query each source individually
+
+Per-source CLI filtering for Claude and Codex individually (e.g. a
+`tm claude daily` / `tm codex daily` split) is tracked for v1.1.x.
 
 ## Data is not migrated into SQLite
 
