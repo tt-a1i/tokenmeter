@@ -16,6 +16,7 @@ import (
 var AllAdapters = map[string]AdapterLoadFn{
 	"amp":      collector.LoadAmpEntries,
 	"gemini":   collector.LoadGeminiEntries,
+	"goose":    collector.LoadGooseEntries,
 	"kimi":     collector.LoadKimiEntries,
 	"openclaw": collector.LoadOpenClawEntries,
 	"opencode": collector.LoadOpenCodeEntries,

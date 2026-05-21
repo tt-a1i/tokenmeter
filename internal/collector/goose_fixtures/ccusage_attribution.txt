@@ -1,0 +1,21 @@
+Goose adapter fixture schema borrowed from ccusage v20 (MIT License)
+https://github.com/ryoppippi/ccusage
+
+Source: rust/crates/ccusage/src/adapter/goose.rs
+  - GOOSE_SESSION_QUERY constant (copied verbatim into goose.go)
+  - tests::create_goose_db CREATE TABLE statement (copied verbatim
+    into goose_test.go::gooseFixtureSchema for test setup)
+
+Fixture data layout (built dynamically by goose_test.go::setupGooseFixture):
+
+  $TempDir/
+    data/
+      sessions/
+        sessions.db    <- SQLite database with one "sessions" table
+
+The DB is created fresh per test via sql.Open("sqlite", path) and
+disposed by t.TempDir() cleanup; no binary fixture file is checked in.
+
+Register the adapter via cmd/tm/cli/registry.go AllAdapters["goose"]:
+  $GOOSE_PATH_ROOT/data/sessions/sessions.db
+or one of the home-directory defaults (see goose.go).
