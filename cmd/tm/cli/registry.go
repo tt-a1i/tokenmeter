@@ -17,6 +17,7 @@ var AllAdapters = map[string]AdapterLoadFn{
 	"amp":      collector.LoadAmpEntries,
 	"codebuff": collector.LoadCodebuffEntries,
 	"copilot":  collector.LoadCopilotEntries,
+	"droid":    collector.LoadDroidEntries,
 	"gemini":   collector.LoadGeminiEntries,
 	"goose":    collector.LoadGooseEntries,
 	"hermes":   collector.LoadHermesEntries,

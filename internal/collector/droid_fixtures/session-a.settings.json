@@ -1,0 +1,12 @@
+{
+    "model": "Claude-Sonnet-4-[Anthropic]",
+    "providerLock": "anthropic",
+    "providerLockTimestamp": "2026-05-01T01:02:03.000Z",
+    "tokenUsage": {
+        "inputTokens": 100,
+        "outputTokens": 50,
+        "cacheCreationTokens": 20,
+        "cacheReadTokens": 10,
+        "thinkingTokens": 5
+    }
+}

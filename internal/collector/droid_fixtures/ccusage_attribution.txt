@@ -1,0 +1,27 @@
+Fixture borrowed from ccusage v20 (MIT License)
+https://github.com/ryoppippi/ccusage
+
+Source: rust/crates/ccusage/src/adapter/droid.rs tests
+  - loads_usage_from_droid_settings_files (session-a.settings.json
+    populated with the model="Claude-Sonnet-4-[Anthropic]" test
+    vector plus a zero-token sentinel file)
+
+Fixture data layout:
+
+  droid_fixtures/
+    ccusage_attribution.txt
+    session-a.settings.json   -> ccusage loads_usage test vector
+                                  (input 100, output 50, cache 20/10,
+                                  thinking 5, model is the bracketed
+                                  Brand form that
+                                  normalize_droid_model_name reduces to
+                                  "claude-sonnet-4")
+    zero.settings.json        -> all-zero usage sentinel; ccusage and
+                                  this adapter both drop it
+
+File matcher: only files ending in ".settings.json" contribute. A bare
+".json" file in the sessions dir is intentionally skipped.
+
+Register the adapter via cmd/tm/cli/registry.go AllAdapters["droid"].
+Default lookup path: $HOME/.factory/sessions/<id>.settings.json.
+Override: $DROID_SESSIONS_DIR (comma-separated list of session roots).
