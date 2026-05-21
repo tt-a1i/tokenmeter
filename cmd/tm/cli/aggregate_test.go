@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -12,21 +13,80 @@ import (
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
 
+// stubAggregateLoader is the shared in-test loader used by aggregate, session,
+// and alias tests. It satisfies both halves of the aggregate API:
+//
+//   - ListUsageForBlocksFiltered returns whatever entries are in .rows.
+//   - AggregateUsage returns whatever pre-aggregated rows are in .aggRows.
+//
+// Tests that exercise the push-down RunAggregate set aggRows; tests that
+// still go through the entry-level path (session, aliases) set rows.
 type stubAggregateLoader struct {
-	rows []storage.TokenUsageEntry
+	rows    []storage.TokenUsageEntry
+	aggRows []storage.AggregateUsageRow
 }
 
 func (s stubAggregateLoader) ListUsageForBlocksFiltered(_ context.Context, _, _ time.Time, _ string) ([]storage.TokenUsageEntry, error) {
 	return s.rows, nil
 }
 
+func (s stubAggregateLoader) AggregateUsage(_ context.Context, _ storage.AggregateFilter) ([]storage.AggregateUsageRow, error) {
+	return s.aggRows, nil
+}
+
+// capturingLoader records the AggregateFilter passed by RunAggregate so the
+// timezone / until propagation tests can inspect what cli forwarded to
+// storage without depending on the actual SQL bucketing.
+type capturingLoader struct {
+	captured storage.AggregateFilter
+	aggRows  []storage.AggregateUsageRow
+}
+
+func (c *capturingLoader) ListUsageForBlocksFiltered(_ context.Context, _, _ time.Time, _ string) ([]storage.TokenUsageEntry, error) {
+	return nil, nil
+}
+
+func (c *capturingLoader) AggregateUsage(_ context.Context, f storage.AggregateFilter) ([]storage.AggregateUsageRow, error) {
+	c.captured = f
+	return c.aggRows, nil
+}
+
+func mustTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func TestRunAggregateUsesPushdownAPI(t *testing.T) {
+	// Confirms RunAggregate consumes storage.AggregateUsage rather than
+	// re-aggregating raw entries. The JSON envelope must surface the
+	// AggregateUsageRow buckets verbatim.
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "2026-05-19", Models: []string{"claude"}, InputTokens: 100, Cost: 1.0},
+		{Bucket: "2026-05-20", Models: []string{"claude"}, InputTokens: 200, Cost: 2.0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+		Shared: cli.Shared{JSON: true},
+		Bucket: cli.BucketDaily,
+	}, loader); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"date": "2026-05-19"`) {
+		t.Errorf("expected 2026-05-19 in output:\n%s", out)
+	}
+	if !strings.Contains(out, `"inputTokens": 100`) {
+		t.Errorf("expected inputTokens=100:\n%s", out)
+	}
+}
+
 func TestRunDailyJSONEnvelope(t *testing.T) {
-	// Boxed-table headers changed when we switched to render.New(); the
-	// stable contract is the camelCase JSON envelope. Verify daily wraps
-	// rows under "daily" and surfaces a "totals" block.
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"),
-			InputTokens: 100, OutputTokens: 50, Model: "claude-opus-4-7", CostUSD: 0.5},
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "2026-05-19", Models: []string{"claude-opus-4-7"},
+			InputTokens: 100, OutputTokens: 50, Cost: 0.5},
 	}}
 	var buf bytes.Buffer
 	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
@@ -60,18 +120,10 @@ func TestRunDailyJSONEnvelope(t *testing.T) {
 	}
 }
 
-func mustTime(s string) time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
 func TestRunAggregateOrderDesc(t *testing.T) {
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"), InputTokens: 100, Model: "claude"},
-		{SessionID: "s2", Timestamp: mustTime("2026-05-20T10:00:00Z"), InputTokens: 200, Model: "claude"},
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "2026-05-19", Models: []string{"claude"}, InputTokens: 100},
+		{Bucket: "2026-05-20", Models: []string{"claude"}, InputTokens: 200},
 	}}
 	var buf bytes.Buffer
 	err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
@@ -89,28 +141,27 @@ func TestRunAggregateOrderDesc(t *testing.T) {
 	}
 }
 
-func TestRunAggregateTimezoneBucketing(t *testing.T) {
-	// 23:30 UTC = 07:30 next day in Asia/Shanghai
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "s1", Timestamp: mustTime("2026-05-19T23:30:00Z"), InputTokens: 100, Model: "claude"},
-	}}
-	var buf bytes.Buffer
-	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+func TestRunAggregateTimezonePropagation(t *testing.T) {
+	// cli no longer buckets in-process — it forwards Location to storage.
+	// Verify the filter argument carries the named timezone.
+	stub := &capturingLoader{}
+	if err := cli.RunAggregate(context.Background(), io.Discard, cli.AggregateArgs{
 		Shared: cli.Shared{Timezone: "Asia/Shanghai"},
 		Bucket: cli.BucketDaily,
-	}, loader); err != nil {
-		t.Fatalf("RunAggregate: %v", err)
+	}, stub); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), "2026-05-20") {
-		t.Fatalf("expected 2026-05-20 bucket (Shanghai TZ), got:\n%s", buf.String())
+	if stub.captured.Location == nil || stub.captured.Location.String() != "Asia/Shanghai" {
+		t.Errorf("expected Location=Asia/Shanghai, got %v", stub.captured.Location)
 	}
 }
 
 func TestRunAggregateModeCalculate(t *testing.T) {
-	// CostUSD=0 + InputTokens>0 + Mode=calculate => pricing should recompute non-zero
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"),
-			InputTokens: 1_000_000, OutputTokens: 100_000, Model: "claude-opus-4-7", CostUSD: 0},
+	// AggregateUsageRow with cost=0 + tokens>0 + Mode=calculate => cli's
+	// recalculateCost recomputes from pricing.
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "2026-05-19", Models: []string{"claude-opus-4-7"},
+			InputTokens: 1_000_000, OutputTokens: 100_000, Cost: 0},
 	}}
 	var buf bytes.Buffer
 	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
@@ -121,6 +172,26 @@ func TestRunAggregateModeCalculate(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "$0.00") {
 		t.Fatalf("mode=calculate should recompute cost, got:\n%s", buf.String())
+	}
+}
+
+func TestRunAggregateModeAutoFallsBackOnZero(t *testing.T) {
+	// ModeAuto must fall back to recalculate when bucket cost == 0 (the
+	// Codex zero-cost case). Asserts cli parity with v1.0.1 entry-level
+	// applyPricingMode semantics.
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "2026-05-19", Models: []string{"claude-opus-4-7"},
+			InputTokens: 1_000_000, OutputTokens: 100_000, Cost: 0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+		Shared: cli.Shared{Mode: "auto"},
+		Bucket: cli.BucketDaily,
+	}, loader); err != nil {
+		t.Fatalf("RunAggregate: %v", err)
+	}
+	if strings.Contains(buf.String(), "$0.00") {
+		t.Fatalf("mode=auto with zero source cost must fall back to recalc, got:\n%s", buf.String())
 	}
 }
 
@@ -145,32 +216,28 @@ func TestParseDateFlagUntilEmpty(t *testing.T) {
 	}
 }
 
-func TestRunAggregateUntilInclusive(t *testing.T) {
-	// Entry at 23:59:00 on 2026-05-20 should be included when --until=20260520.
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "s1", Timestamp: mustTime("2026-05-20T23:59:00Z"),
-			InputTokens: 100, Model: "claude-opus-4-7", CostUSD: 0.5},
-	}}
-	var buf bytes.Buffer
-	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
-		Shared: cli.Shared{JSON: true, Until: "20260520"},
+func TestRunAggregateUntilPropagates(t *testing.T) {
+	// --until=20260520 must propagate to filter.Until = 2026-05-21 00:00 UTC
+	// so the SQL filter includes entries through end-of-day 2026-05-20.
+	stub := &capturingLoader{}
+	if err := cli.RunAggregate(context.Background(), io.Discard, cli.AggregateArgs{
+		Shared: cli.Shared{Until: "20260520"},
 		Bucket: cli.BucketDaily,
-	}, loader); err != nil {
-		t.Fatalf("RunAggregate: %v", err)
+	}, stub); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), `"2026-05-20"`) {
-		t.Fatalf("expected 2026-05-20 row when --until=20260520, got:\n%s", buf.String())
+	want := time.Date(2026, 5, 21, 0, 0, 0, 0, time.UTC)
+	if !stub.captured.Until.Equal(want) {
+		t.Errorf("filter.Until: got %v, want %v", stub.captured.Until, want)
 	}
 }
 
 func TestRunAggregateBreakdownPropagates(t *testing.T) {
-	// Two entries in the same daily bucket but different models — Breakdown=true
-	// must surface them as a modelBreakdowns array under that day's row.
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"),
-			InputTokens: 100, Model: "claude-opus-4-7", CostUSD: 1},
-		{SessionID: "s1", Timestamp: mustTime("2026-05-19T11:00:00Z"),
-			InputTokens: 200, Model: "gpt-5", CostUSD: 2},
+	// Breakdown=true => storage returns one row per (bucket, model).
+	// cli folds them into one render row with Breakdown[] populated.
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "2026-05-19", Model: "claude-opus-4-7", InputTokens: 100, Cost: 1},
+		{Bucket: "2026-05-19", Model: "gpt-5", InputTokens: 200, Cost: 2},
 	}}
 	var buf bytes.Buffer
 	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
@@ -180,11 +247,25 @@ func TestRunAggregateBreakdownPropagates(t *testing.T) {
 		t.Fatalf("RunAggregate: %v", err)
 	}
 	out := buf.String()
-	// JSON envelope must surface per-model breakdown when --breakdown is set.
 	if !strings.Contains(out, "modelBreakdowns") {
 		t.Fatalf("expected modelBreakdowns key in --breakdown JSON, got:\n%s", out)
 	}
 	if !strings.Contains(out, "claude-opus-4-7") || !strings.Contains(out, "gpt-5") {
 		t.Fatalf("expected both models in breakdown, got:\n%s", out)
+	}
+}
+
+func TestRunAggregateBreakdownForwardsFilter(t *testing.T) {
+	// AggregateFilter.Breakdown must equal Shared.Breakdown so SQL adds the
+	// per-model GROUP BY column.
+	stub := &capturingLoader{}
+	if err := cli.RunAggregate(context.Background(), io.Discard, cli.AggregateArgs{
+		Shared: cli.Shared{Breakdown: true},
+		Bucket: cli.BucketDaily,
+	}, stub); err != nil {
+		t.Fatal(err)
+	}
+	if !stub.captured.Breakdown {
+		t.Errorf("expected filter.Breakdown=true")
 	}
 }

@@ -25,8 +25,20 @@ type AggregateArgs struct {
 	Bucket Bucket
 }
 
+// AggregateLoader is the read-side interface RunSession / RunDeprecatedAlias
+// continue to take. RunAggregate needs more — see AggregateUsageLoader.
 type AggregateLoader interface {
 	ListUsageForBlocksFiltered(ctx context.Context, since, until time.Time, workspace string) ([]storage.TokenUsageEntry, error)
+}
+
+// AggregateUsageLoader is what RunAggregate actually requires post-push-down.
+// *storage.DB satisfies both halves of the interface; the cli layer
+// type-asserts at runtime so callers (aliases.go, session.go) that still
+// hand in a bare AggregateLoader don't need their signatures rewritten in
+// the same commit.
+type AggregateUsageLoader interface {
+	AggregateLoader
+	AggregateUsage(ctx context.Context, f storage.AggregateFilter) ([]storage.AggregateUsageRow, error)
 }
 
 // pricingMap is loaded once per process; LoadEmbedded panics on malformed
@@ -34,6 +46,11 @@ type AggregateLoader interface {
 var pricingMap = pricing.LoadEmbedded()
 
 func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader AggregateLoader) error {
+	ul, ok := loader.(AggregateUsageLoader)
+	if !ok {
+		return fmt.Errorf("aggregate loader %T does not implement AggregateUsage; rebuild against storage v1.0.2", loader)
+	}
+
 	since, err := parseDateFlag(a.Shared.Since)
 	if err != nil {
 		return err
@@ -42,12 +59,10 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 	if err != nil {
 		return err
 	}
-	entries, err := loader.ListUsageForBlocksFiltered(ctx, since, until, a.Shared.Project)
-	if err != nil {
-		return err
-	}
-	entries = applyPricingMode(entries, pricing.ParseMode(a.Shared.Mode))
 
+	// Note: timezone offset uses the offset at query time, which may
+	// mis-bucket historical data that crossed a DST boundary. Known
+	// limitation; acceptable for the typical ccusage workflow.
 	loc := time.UTC
 	if a.Shared.Timezone != "" {
 		parsed, err := time.LoadLocation(a.Shared.Timezone)
@@ -57,50 +72,39 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 		loc = parsed
 	}
 
-	groups := groupBy(entries, a.Bucket, loc)
-	keys := make([]string, 0, len(groups))
-	for k := range groups {
-		keys = append(keys, k)
+	filter := storage.AggregateFilter{
+		Since:     since,
+		Until:     until,
+		Project:   a.Shared.Project,
+		Bucket:    cliBucketToStorage(a.Bucket),
+		Breakdown: a.Shared.Breakdown,
+		Location:  loc,
 	}
-	if a.Shared.Order == "desc" {
-		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-	} else {
-		sort.Strings(keys)
+	aggRows, err := ul.AggregateUsage(ctx, filter)
+	if err != nil {
+		return err
 	}
 
-	rows := make([]render.AggregateRow, 0, len(keys))
-	for _, k := range keys {
-		g := groups[k]
-		row := render.AggregateRow{
-			Bucket:            k,
-			Models:            g.models,
-			InputTokens:       g.input,
-			OutputTokens:      g.output,
-			CacheCreateTokens: g.cacheCreate,
-			CacheReadTokens:   g.cacheRead,
-			TotalTokens:       g.input + g.output + g.cacheCreate + g.cacheRead,
-			Cost:              g.cost,
-		}
-		if a.Shared.Breakdown {
-			for model, st := range g.perModel {
-				row.Breakdown = append(row.Breakdown, render.ModelBreakdown{
-					Model:             model,
-					InputTokens:       st.Input,
-					OutputTokens:      st.Output,
-					CacheCreateTokens: st.CacheCreate,
-					CacheReadTokens:   st.CacheRead,
-					TotalTokens:       st.Input + st.Output + st.CacheCreate + st.CacheRead,
-					Cost:              st.Cost,
-				})
-			}
-			sort.Slice(row.Breakdown, func(i, j int) bool {
-				return row.Breakdown[i].Cost > row.Breakdown[j].Cost
-			})
-		}
-		rows = append(rows, row)
+	mode := pricing.ParseMode(a.Shared.Mode)
+	rows := convertAggregateRows(aggRows, a.Shared.Breakdown, mode)
+
+	if a.Shared.Order == "desc" {
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Bucket > rows[j].Bucket })
 	}
 
 	return render.New().RenderAggregate(w, bucketKind(a.Bucket), rows, renderOpts(a.Shared, w))
+}
+
+// cliBucketToStorage maps the cli Bucket enum to its storage counterpart.
+func cliBucketToStorage(b Bucket) storage.AggregateBucket {
+	switch b {
+	case BucketWeekly:
+		return storage.BucketWeek
+	case BucketMonthly:
+		return storage.BucketMonth
+	default:
+		return storage.BucketDay
+	}
 }
 
 // bucketKind maps the cli Bucket enum to the render package's string kind.
@@ -115,70 +119,111 @@ func bucketKind(b Bucket) string {
 	}
 }
 
-// modelStats tracks per-model token + cost subtotals inside one aggGroup so
-// the render layer can emit Breakdown rows when --breakdown is set.
-type modelStats struct {
-	Input, Output, CacheCreate, CacheRead int64
-	Cost                                  float64
-}
-
-type aggGroup struct {
-	tokens                                int64
-	cost                                  float64
-	models                                []string
-	seen                                  map[string]struct{}
-	input, output, cacheCreate, cacheRead int64
-	perModel                              map[string]*modelStats
-}
-
-func groupBy(entries []storage.TokenUsageEntry, b Bucket, loc *time.Location) map[string]*aggGroup {
-	out := map[string]*aggGroup{}
-	for _, e := range entries {
-		key := bucketKey(e.Timestamp.In(loc), b)
-		g, ok := out[key]
+// convertAggregateRows folds storage rows (which carry one row per
+// (bucket, model) when Breakdown=true) into render rows (one row per bucket,
+// with Breakdown[] populated when requested). Per-row cost honors --mode:
+// ModeCalculate always recomputes; ModeAuto recomputes only when the source
+// bucket cost is zero (matching v1.0.1 entry-level applyPricingMode semantics
+// — Codex zero-cost rows still surface a value); ModeDisplay leaves cost as
+// SUM-ed by storage.
+func convertAggregateRows(in []storage.AggregateUsageRow, breakdown bool, mode pricing.Mode) []render.AggregateRow {
+	if !breakdown {
+		out := make([]render.AggregateRow, 0, len(in))
+		for _, r := range in {
+			cost := r.Cost
+			if mode == pricing.ModeCalculate || (mode == pricing.ModeAuto && cost == 0) {
+				cost = recalculateCost(r)
+			}
+			out = append(out, render.AggregateRow{
+				Bucket:            r.Bucket,
+				Models:            r.Models,
+				InputTokens:       r.InputTokens,
+				OutputTokens:      r.OutputTokens,
+				CacheCreateTokens: r.CacheCreateTokens,
+				CacheReadTokens:   r.CacheReadTokens,
+				TotalTokens:       r.InputTokens + r.OutputTokens + r.CacheCreateTokens + r.CacheReadTokens,
+				Cost:              cost,
+			})
+		}
+		return out
+	}
+	// Breakdown=true: storage emits one row per (bucket, model). Fold by
+	// bucket so the render layer sees one AggregateRow per bucket with the
+	// per-model rows in Breakdown[].
+	byBucket := map[string]*render.AggregateRow{}
+	order := []string{}
+	for _, r := range in {
+		row, ok := byBucket[r.Bucket]
 		if !ok {
-			g = &aggGroup{
-				seen:     map[string]struct{}{},
-				perModel: map[string]*modelStats{},
-			}
-			out[key] = g
+			row = &render.AggregateRow{Bucket: r.Bucket}
+			byBucket[r.Bucket] = row
+			order = append(order, r.Bucket)
 		}
-		g.tokens += e.InputTokens + e.OutputTokens + e.CacheCreationInputTokens + e.CacheReadInputTokens
-		g.cost += e.CostUSD
-		g.input += e.InputTokens
-		g.output += e.OutputTokens
-		g.cacheCreate += e.CacheCreationInputTokens
-		g.cacheRead += e.CacheReadInputTokens
-		if e.Model != "" {
-			if _, exists := g.seen[e.Model]; !exists {
-				g.models = append(g.models, e.Model)
-				g.seen[e.Model] = struct{}{}
-			}
-			ms, ok := g.perModel[e.Model]
-			if !ok {
-				ms = &modelStats{}
-				g.perModel[e.Model] = ms
-			}
-			ms.Input += e.InputTokens
-			ms.Output += e.OutputTokens
-			ms.CacheCreate += e.CacheCreationInputTokens
-			ms.CacheRead += e.CacheReadInputTokens
-			ms.Cost += e.CostUSD
+		cost := r.Cost
+		if mode == pricing.ModeCalculate || (mode == pricing.ModeAuto && cost == 0) {
+			cost = recalculateCost(r)
 		}
+		row.Models = appendUnique(row.Models, r.Model)
+		row.InputTokens += r.InputTokens
+		row.OutputTokens += r.OutputTokens
+		row.CacheCreateTokens += r.CacheCreateTokens
+		row.CacheReadTokens += r.CacheReadTokens
+		row.TotalTokens = row.InputTokens + row.OutputTokens + row.CacheCreateTokens + row.CacheReadTokens
+		row.Cost += cost
+		row.Breakdown = append(row.Breakdown, render.ModelBreakdown{
+			Model:             r.Model,
+			InputTokens:       r.InputTokens,
+			OutputTokens:      r.OutputTokens,
+			CacheCreateTokens: r.CacheCreateTokens,
+			CacheReadTokens:   r.CacheReadTokens,
+			TotalTokens:       r.InputTokens + r.OutputTokens + r.CacheCreateTokens + r.CacheReadTokens,
+			Cost:              cost,
+		})
+	}
+	out := make([]render.AggregateRow, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byBucket[k])
 	}
 	return out
 }
 
-func bucketKey(ts time.Time, b Bucket) string {
-	switch b {
-	case BucketWeekly:
-		_, w := ts.ISOWeek()
-		return fmt.Sprintf("%d-W%02d", ts.Year(), w)
-	case BucketMonthly:
-		return ts.Format("2006-01")
-	default:
-		return ts.Format("2006-01-02")
+// appendUnique appends v to slice if not already present. Used to grow the
+// per-bucket models list when folding breakdown rows.
+func appendUnique(slice []string, v string) []string {
+	if v == "" {
+		return slice
 	}
+	for _, s := range slice {
+		if s == v {
+			return slice
+		}
+	}
+	return append(slice, v)
+}
+
+// recalculateCost re-prices a single AggregateUsageRow from its token totals
+// using the bucket's primary model (r.Model when Breakdown=true, else
+// r.Models[0]). Mixed-model buckets in non-breakdown mode are approximated by
+// the first model; users wanting exact per-entry recompute should pass
+// --breakdown.
+func recalculateCost(r storage.AggregateUsageRow) float64 {
+	model := r.Model
+	if model == "" && len(r.Models) > 0 {
+		model = r.Models[0]
+	}
+	if model == "" {
+		return r.Cost
+	}
+	p, ok := pricingMap.Resolve(model)
+	if !ok {
+		return r.Cost
+	}
+	return pricing.CalculateCost(p, pricing.Usage{
+		Input:       r.InputTokens,
+		Output:      r.OutputTokens,
+		CacheCreate: r.CacheCreateTokens,
+		CacheRead:   r.CacheReadTokens,
+	}, pricing.SpeedStandard)
 }
 
 // parseDateFlag accepts a YYYYMMDD shared-flag value and returns a UTC
@@ -210,14 +255,33 @@ func ParseDateFlagUntil(s string) (time.Time, error) {
 	return t.Add(24 * time.Hour), nil
 }
 
-// applyPricingMode rewrites each entry's CostUSD according to mode:
+// aggGroup / modelStats are the in-memory aggregation types RunAggregate
+// used pre-push-down. RunSession (cli/session.go) still uses them; once
+// Task 6 swaps RunSession to AggregateUsage these become dead and can be
+// deleted alongside applyPricingMode below.
+type aggGroup struct {
+	tokens                                int64
+	cost                                  float64
+	models                                []string
+	seen                                  map[string]struct{}
+	input, output, cacheCreate, cacheRead int64
+	perModel                              map[string]*modelStats
+}
+
+type modelStats struct {
+	Input, Output, CacheCreate, CacheRead int64
+	Cost                                  float64
+}
+
+// applyPricingMode rewrites each entry's CostUSD according to mode. Kept
+// here for cli/blocks.go and cli/session.go, which still drive entry-level
+// pricing during their own push-down migration; once those land, this
+// helper becomes dead and can be deleted.
+//
 //   - ModeDisplay: leaves CostUSD untouched (trust the source row).
 //   - ModeCalculate: recomputes from tokens × pricing for the resolved model.
 //   - ModeAuto: when CostUSD > 0 keeps it; when it's zero, falls back to
 //     calculate so missing cost columns (e.g. Codex) still surface a value.
-//
-// internal/pricing has no storage import on purpose; the per-entry bridge
-// lives here so we don't pull storage into the pricing package.
 func applyPricingMode(entries []storage.TokenUsageEntry, mode pricing.Mode) []storage.TokenUsageEntry {
 	if mode == pricing.ModeDisplay {
 		return entries
