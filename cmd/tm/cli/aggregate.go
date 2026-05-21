@@ -426,10 +426,10 @@ func RunAggregateAllSource(ctx context.Context, w io.Writer, a AggregateArgs, sq
 func aggregateEntriesInMemory(entries []storage.TokenUsageEntry, bucket Bucket, loc *time.Location, breakdown bool) []storage.AggregateUsageRow {
 	type key struct{ bucket, model string }
 	type acc struct {
-		models       []string
+		models          []string
 		in, out, cc, cr int64
-		cost         float64
-		lastActivity time.Time
+		cost            float64
+		lastActivity    time.Time
 	}
 	perKey := map[key]*acc{}
 	seen := map[key]bool{}
