@@ -18,6 +18,10 @@ const (
 	BucketDaily Bucket = iota
 	BucketWeekly
 	BucketMonthly
+	// BucketSession buckets rows by session_id; primarily used by
+	// RunSession but also reachable through the adapter router when an
+	// adapter source is invoked with `session` as its sub-command.
+	BucketSession
 )
 
 type AggregateArgs struct {

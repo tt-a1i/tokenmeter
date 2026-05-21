@@ -24,6 +24,7 @@ type Shared struct {
 	SessionLength time.Duration
 	Active        bool
 	CPUProfile    string
+	NoScan        bool
 }
 
 // ParseShared extracts shared flags from args. Returns the remaining
@@ -47,6 +48,7 @@ func ParseShared(args []string) (Shared, []string, error) {
 	fs.StringVar(&sessionLengthStr, "session-length", "5h", "duration of one session block (e.g. 5h, 1h30m)")
 	fs.BoolVar(&s.Active, "active", false, "blocks: show only the active 5h window")
 	fs.StringVar(&s.CPUProfile, "cpu-profile", "", "write CPU profile to file (hidden)")
+	fs.BoolVar(&s.NoScan, "no-scan", false, "skip batch adapter scans; use only SQLite (Claude+Codex)")
 	// Allow flags to be interspersed with positionals: stdlib flag.Parse stops
 	// at the first non-flag token, so we drive it in a loop and accumulate the
 	// real positionals separately.

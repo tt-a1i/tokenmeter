@@ -8,13 +8,41 @@ import (
 // Command is a routed command — a Name plus the resolved args struct for the
 // caller to dispatch on.
 type Command struct {
-	Name          string
+	Name string
+	// Source is the batch-adapter source name when Name=="adapter" (one of
+	// "amp", "opencode", etc.); empty for SQLite-backed sources and the
+	// all-source merge path.
+	Source        string
 	Alias         string // original argv[0] when arrived via a deprecated alias; "" otherwise
 	Shared        Shared
 	BlocksArgs    BlocksArgs
 	AggregateArgs AggregateArgs
 	SessionArgs   SessionArgs
 	Rest          []string
+}
+
+// adapterNameSet lists every batch-adapter source the router accepts as a
+// top-level command. Each adapter supports the daily/weekly/monthly/session
+// sub-commands via the same Shared flag set; main dispatches them through
+// the adapter registry in Task 3+.
+var adapterNameSet = map[string]struct{}{
+	"amp": {}, "opencode": {}, "gemini": {}, "copilot": {}, "goose": {}, "codebuff": {},
+	"hermes": {}, "kilo": {}, "kimi": {}, "openclaw": {}, "pi": {}, "droid": {}, "qwen": {},
+}
+
+// bucketFromName maps the sub-command string (rest[0] when an adapter source
+// drives the route) onto the cli Bucket enum. Defaults to daily.
+func bucketFromName(s string) Bucket {
+	switch s {
+	case "weekly":
+		return BucketWeekly
+	case "monthly":
+		return BucketMonthly
+	case "session":
+		return BucketSession
+	default:
+		return BucketDaily
+	}
 }
 
 // Route parses argv into a Command. argv[0] is the subcommand name; any
@@ -37,6 +65,18 @@ func Route(argv []string) (Command, error) {
 	if target, ok := IsDeprecatedAlias(name); ok {
 		cmd.Alias = name
 		cmd.Name = "deprecated:" + target
+		return cmd, nil
+	}
+	if _, ok := adapterNameSet[name]; ok {
+		// Sub-command is rest[0] if present, else "daily".
+		bucketName := "daily"
+		if len(rest) > 0 {
+			bucketName = rest[0]
+		}
+		bucket := bucketFromName(bucketName)
+		cmd.Name = "adapter"
+		cmd.Source = name
+		cmd.AggregateArgs = AggregateArgs{Shared: shared, Bucket: bucket}
 		return cmd, nil
 	}
 	switch name {

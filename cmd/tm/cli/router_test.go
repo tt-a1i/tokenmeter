@@ -68,3 +68,32 @@ func TestRouteNoArgsDefaultsToDaily(t *testing.T) {
 		t.Fatalf("expected BucketDaily, got %v", cmd.AggregateArgs.Bucket)
 	}
 }
+
+func TestRouteAmpDaily(t *testing.T) {
+	cmd, err := cli.Route([]string{"amp", "daily", "--json"})
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if cmd.Name != "adapter" {
+		t.Fatalf("Name=%q want adapter", cmd.Name)
+	}
+	if cmd.Source != "amp" {
+		t.Fatalf("Source=%q want amp", cmd.Source)
+	}
+	if !cmd.Shared.JSON {
+		t.Fatalf("shared flag not propagated")
+	}
+}
+
+func TestRouteAllSourceUnchanged(t *testing.T) {
+	cmd, err := cli.Route([]string{"daily", "--no-scan"})
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if cmd.Name != "daily" {
+		t.Fatalf("Name=%q want daily", cmd.Name)
+	}
+	if !cmd.Shared.NoScan {
+		t.Fatalf("--no-scan flag did not propagate")
+	}
+}
