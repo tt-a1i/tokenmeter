@@ -173,12 +173,12 @@ func readDroidSettings(path string) (UsageEntry, bool) {
 		ProviderLock          string `json:"providerLock"`
 		ProviderLockTimestamp string `json:"providerLockTimestamp"`
 		TokenUsage            *struct {
-			Input          int64 `json:"inputTokens"`
-			Output         int64 `json:"outputTokens"`
-			CacheCreation  int64 `json:"cacheCreationTokens"`
-			CacheRead      int64 `json:"cacheReadTokens"`
-			Thinking       int64 `json:"thinkingTokens"`
-			Total          int64 `json:"totalTokens"`
+			Input         int64 `json:"inputTokens"`
+			Output        int64 `json:"outputTokens"`
+			CacheCreation int64 `json:"cacheCreationTokens"`
+			CacheRead     int64 `json:"cacheReadTokens"`
+			Thinking      int64 `json:"thinkingTokens"`
+			Total         int64 `json:"totalTokens"`
 		} `json:"tokenUsage"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -300,4 +300,3 @@ func droidTimestamp(providerLockTS, path string) (time.Time, bool) {
 	}
 	return info.ModTime().UTC(), true
 }
-

@@ -94,8 +94,8 @@ func TestAllSourceMergesWithFakeAdapters(t *testing.T) {
 	// Each source must surface its signature model name via the
 	// per-model breakdown rows ("└─ <model>" under each day).
 	for _, want := range []string{
-		"gpt-5-amp",              // Amp (from threads/thread-abc.json)
-		"claude-sonnet-4",        // Copilot OTEL row
+		"gpt-5-amp",                // Amp (from threads/thread-abc.json)
+		"claude-sonnet-4",          // Copilot OTEL row
 		"claude-sonnet-4-20250514", // Goose seed
 	} {
 		if !strings.Contains(output, want) {
