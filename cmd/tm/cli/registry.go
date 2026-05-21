@@ -17,4 +17,5 @@ var AllAdapters = map[string]AdapterLoadFn{
 	"amp":      collector.LoadAmpEntries,
 	"kimi":     collector.LoadKimiEntries,
 	"openclaw": collector.LoadOpenClawEntries,
+	"opencode": collector.LoadOpenCodeEntries,
 }

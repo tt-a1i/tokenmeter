@@ -1,0 +1,8 @@
+Fixture borrowed from ccusage v20 (MIT License)
+https://github.com/ryoppippi/ccusage
+
+Source: rust/crates/ccusage/src/adapter/opencode/loader.rs tests
+  - loads_message_json_files (sample-a/message.json)
+  - synthesized nested file (sample-b/nested/message.json) to exercise
+    recursive walk; mirrors the ccusage `collect_files_with_extension`
+    behavior under <root>/storage/message/.

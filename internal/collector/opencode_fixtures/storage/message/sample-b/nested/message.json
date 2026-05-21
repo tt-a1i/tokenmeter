@@ -1,0 +1,1 @@
+{"id":"msg-2","sessionID":"session-b","providerID":"openai","modelID":"gpt-test","time":{"created":1767398400000},"tokens":{"input":200,"output":80,"cache":{"read":15,"write":25}},"cost":0.05}
