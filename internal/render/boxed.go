@@ -208,6 +208,16 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 			colorize(text.FgRed, fmtCost(r.Cost)),
 			colorizeStatus(r.Status),
 		})
+		if opts.Breakdown {
+			for _, b := range r.Breakdown {
+				t.AppendRow(table.Row{
+					"  └─ " + b.Model, "",
+					fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+					fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
+					fmtInt(b.TotalTokens), fmtCost(b.Cost), "",
+				})
+			}
+		}
 		sumIn += r.InputTokens
 		sumOut += r.OutputTokens
 		sumCC += r.CacheCreateTokens

@@ -48,6 +48,7 @@ type blockJSONRow struct {
 	TotalCost           float64              `json:"totalCost"`
 	Status              string               `json:"status"`
 	Projection          *blockProjectionJSON `json:"projection,omitempty"`
+	ModelBreakdowns     []breakdownJSON      `json:"modelBreakdowns,omitempty"`
 }
 
 type blockProjectionJSON struct {
@@ -181,6 +182,13 @@ func (defaultRenderer) renderBlocksJSON(w io.Writer, rows []BlockRow) error {
 				TotalCost:            r.Projection.TotalCost,
 				RemainingTimeSeconds: r.Projection.RemainingTime.Seconds(),
 			}
+		}
+		for _, b := range r.Breakdown {
+			row.ModelBreakdowns = append(row.ModelBreakdowns, breakdownJSON{
+				Model: b.Model, InputTokens: b.InputTokens, OutputTokens: b.OutputTokens,
+				CacheCreationTokens: b.CacheCreateTokens, CacheReadTokens: b.CacheReadTokens,
+				TotalTokens: b.TotalTokens, TotalCost: b.Cost,
+			})
 		}
 		outRows = append(outRows, row)
 		totals.InputTokens += r.InputTokens

@@ -124,6 +124,36 @@ func TestRunBlocksGapStatusInsertedOnLongQuiet(t *testing.T) {
 	}
 }
 
+func TestRunBlocksBreakdownNests(t *testing.T) {
+	// Two entries in the same 5h window, different models. With
+	// --breakdown + --json, the JSON envelope must surface a
+	// modelBreakdowns array carrying both models.
+	loader := stubLoader{items: []storage.TokenUsageEntry{
+		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"),
+			Model: "claude", InputTokens: 100, CostUSD: 1.0},
+		{SessionID: "s1", Timestamp: mustTime("2026-05-19T11:00:00Z"),
+			Model: "gpt", InputTokens: 200, CostUSD: 2.0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunBlocks(context.Background(), &buf, cli.BlocksArgs{
+		Shared:        cli.Shared{Breakdown: true, JSON: true},
+		SessionLength: 5 * time.Hour,
+		Now:           mustTime("2026-05-19T12:00:00Z"),
+	}, loader); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"modelBreakdowns"`) {
+		t.Errorf("expected modelBreakdowns in JSON output:\n%s", out)
+	}
+	if !strings.Contains(out, `"model": "claude"`) {
+		t.Errorf("expected claude in breakdown:\n%s", out)
+	}
+	if !strings.Contains(out, `"model": "gpt"`) {
+		t.Errorf("expected gpt in breakdown:\n%s", out)
+	}
+}
+
 func TestRunBlocksModeCalculate(t *testing.T) {
 	loader := stubLoader{items: []storage.TokenUsageEntry{
 		{SessionID: "s", Timestamp: mustTime("2026-05-19T10:00:00Z"),

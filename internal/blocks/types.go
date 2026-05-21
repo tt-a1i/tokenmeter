@@ -50,4 +50,8 @@ type SessionBlock struct {
 	BurnRate   *BurnRate
 	Projection *Projection
 	EntryCount int
+	// PerModel maps model name → per-model token totals inside this block.
+	// Populated by PopulatePerModel (burn.go); nil/empty for gap blocks
+	// and for callers that don't request a breakdown.
+	PerModel map[string]TokenCounts
 }

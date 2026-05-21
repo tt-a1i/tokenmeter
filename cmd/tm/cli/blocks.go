@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
@@ -44,6 +45,9 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	}
 	entries = applyPricingMode(entries, pricing.ParseMode(args.Shared.Mode))
 	all := blocks.Annotate(blocks.Identify(entries, args.SessionLength, args.Now), args.Now)
+	if args.Shared.Breakdown {
+		all = blocks.PopulatePerModel(all, entries)
+	}
 	if args.Active {
 		all = filterActive(all)
 	}
@@ -65,6 +69,35 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 				TotalTokens:   b.Projection.TotalTokens,
 				TotalCost:     b.Projection.TotalCost,
 				RemainingTime: b.Projection.RemainingTime,
+			}
+		}
+		if args.Shared.Breakdown && len(b.PerModel) > 0 {
+			models := make([]string, 0, len(b.PerModel))
+			for m := range b.PerModel {
+				models = append(models, m)
+			}
+			sort.Strings(models)
+			total := b.Tokens.Total()
+			for _, m := range models {
+				tc := b.PerModel[m]
+				// Per-model cost is approximated by token-share of the
+				// block's authoritative total — the source rows are
+				// already aggregated, so there is no per-entry cost here.
+				// Renderer surfaces the share; the box footer keeps the
+				// exact block total.
+				share := 0.0
+				if total > 0 {
+					share = b.Cost * float64(tc.Total()) / float64(total)
+				}
+				row.Breakdown = append(row.Breakdown, render.ModelBreakdown{
+					Model:             m,
+					InputTokens:       tc.Input,
+					OutputTokens:      tc.Output,
+					CacheCreateTokens: tc.CacheCreate,
+					CacheReadTokens:   tc.CacheRead,
+					TotalTokens:       tc.Total(),
+					Cost:              share,
+				})
 			}
 		}
 		rows = append(rows, row)
