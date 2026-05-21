@@ -1,0 +1,5 @@
+Fixture borrowed from ccusage v20 (MIT License)
+https://github.com/ryoppippi/ccusage
+
+Source: rust/crates/ccusage/src/adapter/kimi.rs tests
+  (loads_status_update_token_usage_from_wire_files)

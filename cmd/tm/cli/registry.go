@@ -14,5 +14,6 @@ import (
 // An empty map degrades RunAggregateAllSource gracefully to SQLite-only
 // output, matching the v1.0.x behavior users see today.
 var AllAdapters = map[string]AdapterLoadFn{
+	"kimi":     collector.LoadKimiEntries,
 	"openclaw": collector.LoadOpenClawEntries,
 }
