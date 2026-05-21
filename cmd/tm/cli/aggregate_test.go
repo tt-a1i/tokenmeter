@@ -255,6 +255,35 @@ func TestRunAggregateBreakdownPropagates(t *testing.T) {
 	}
 }
 
+func TestRunAggregateModeCalculateBreakdownPrecision(t *testing.T) {
+	// SUM-then-reprice path: storage returns per-model aggregated rows
+	// (Breakdown=true), cli recalculates each model's cost from its own
+	// pricing — no first-model approximation.
+	rows := []storage.AggregateUsageRow{
+		{Bucket: "2026-05-19", Model: "claude-opus-4-7", InputTokens: 1_000_000, Cost: 0},
+		{Bucket: "2026-05-19", Model: "gpt-5", InputTokens: 1_000_000, Cost: 0},
+	}
+	args := cli.AggregateArgs{
+		Shared: cli.Shared{Mode: "calculate", Breakdown: true, JSON: true},
+		Bucket: cli.BucketDaily,
+	}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, args, stubAggregateLoader{aggRows: rows}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"model": "claude-opus-4-7"`) {
+		t.Errorf("expected claude breakdown:\n%s", out)
+	}
+	if !strings.Contains(out, `"model": "gpt-5"`) {
+		t.Errorf("expected gpt breakdown:\n%s", out)
+	}
+	// Mode=calculate must recompute non-zero costs for both models.
+	if strings.Contains(out, `"totalCost": 0`) || strings.Contains(out, `"totalCost":0`) {
+		t.Errorf("mode=calculate should recompute non-zero cost:\n%s", out)
+	}
+}
+
 func TestRunAggregateBreakdownForwardsFilter(t *testing.T) {
 	// AggregateFilter.Breakdown must equal Shared.Breakdown so SQL adds the
 	// per-model GROUP BY column.
