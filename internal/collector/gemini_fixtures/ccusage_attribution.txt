@@ -1,0 +1,12 @@
+Fixtures inspired by ccusage v20 (MIT License) — specifically the
+`loads_jsonl_token_events_and_separates_cached_input` and
+`discovers_json_and_jsonl_logs` inline tests in
+rust/crates/ccusage/src/adapter/gemini.rs.
+
+The .jsonl fixture mirrors ccusage's session-a JSONL test data verbatim
+so the Go cached-overlap subtraction matches the reference numbers
+(input 15327 + cached 11526 + tool 7 → display input 3808).
+
+The .json fixture is hand-crafted to exercise the second-format branch
+that ccusage's parse_json_file uses: a single document with a top-level
+messages[] array filtered to type=="gemini".

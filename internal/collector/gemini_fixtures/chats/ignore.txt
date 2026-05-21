@@ -1,0 +1,1 @@
+This file's extension is intentionally non-matching — Gemini adapter must skip it during discovery.

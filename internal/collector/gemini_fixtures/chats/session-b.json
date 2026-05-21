@@ -1,0 +1,7 @@
+{
+  "sessionId": "session-b",
+  "startTime": "2026-05-17T12:00:00.000Z",
+  "messages": [
+    {"type":"gemini","model":"gemini-3-flash-preview","timestamp":"2026-05-17T12:00:30.000Z","tokens":{"input":1000,"output":50,"tool":2,"total":1052}}
+  ]
+}
