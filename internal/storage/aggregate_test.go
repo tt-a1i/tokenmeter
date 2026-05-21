@@ -163,3 +163,61 @@ func TestAggregateUsageGroupConcatModelOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestAggregateUsageWeek(t *testing.T) {
+	db := openTestDB(t)
+	// 2026-05-19 is Tuesday, week 20 (per strftime %W which uses
+	// Monday-as-first-day-of-week, same as Go ISO week here).
+	seedRow(t, db, "s1", "x", mustTime(t, "2026-05-19T10:00:00Z"), 10, 0, 0, 0, 0)
+	seedRow(t, db, "s2", "x", mustTime(t, "2026-05-25T10:00:00Z"), 20, 0, 0, 0, 0)
+	// 2026-05-25 is Monday week 21
+
+	rows, err := db.AggregateUsage(context.Background(), AggregateFilter{Bucket: BucketWeek})
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 weeks, got %d (%+v)", len(rows), rows)
+	}
+	if rows[0].Bucket != "2026-W20" || rows[1].Bucket != "2026-W21" {
+		t.Errorf("buckets: %q / %q", rows[0].Bucket, rows[1].Bucket)
+	}
+}
+
+func TestAggregateUsageMonth(t *testing.T) {
+	db := openTestDB(t)
+	seedRow(t, db, "s1", "x", mustTime(t, "2026-04-15T10:00:00Z"), 10, 0, 0, 0, 0)
+	seedRow(t, db, "s2", "x", mustTime(t, "2026-05-15T10:00:00Z"), 20, 0, 0, 0, 0)
+
+	rows, err := db.AggregateUsage(context.Background(), AggregateFilter{Bucket: BucketMonth})
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 months, got %d", len(rows))
+	}
+	if rows[0].Bucket != "2026-04" || rows[1].Bucket != "2026-05" {
+		t.Errorf("months: %q / %q", rows[0].Bucket, rows[1].Bucket)
+	}
+}
+
+func TestAggregateUsageTimezoneOffset(t *testing.T) {
+	db := openTestDB(t)
+	// 2026-05-19 23:30 UTC == 2026-05-20 07:30 Asia/Shanghai (+8h)
+	seedRow(t, db, "s1", "x", mustTime(t, "2026-05-19T23:30:00Z"), 100, 0, 0, 0, 0)
+
+	shanghai, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Skip("Asia/Shanghai tz data missing")
+	}
+
+	rows, err := db.AggregateUsage(context.Background(), AggregateFilter{
+		Bucket: BucketDay, Location: shanghai,
+	})
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Bucket != "2026-05-20" {
+		t.Fatalf("want 2026-05-20 bucket (Shanghai TZ), got %+v", rows)
+	}
+}
