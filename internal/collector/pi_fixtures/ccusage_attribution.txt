@@ -1,0 +1,10 @@
+Fixture inspired by ccusage v20 (MIT License) — specifically the
+`falls_back_to_total_tokens_when_pi_parts_are_missing` inline test in
+rust/crates/ccusage/src/adapter/pi.rs and the documented field shape
+(message.usage.{input, output, cacheRead, cacheWrite, totalTokens,
+cost.total}).
+
+The first line is a non-message envelope that the cheap pre-filter
+should skip. The second line is an assistant message with full token
+fields plus a cost.total entry, exercising every mapping the Go
+adapter handles.

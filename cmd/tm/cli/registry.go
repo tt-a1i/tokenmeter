@@ -18,7 +18,9 @@ var AllAdapters = map[string]AdapterLoadFn{
 	"copilot":  collector.LoadCopilotEntries,
 	"gemini":   collector.LoadGeminiEntries,
 	"goose":    collector.LoadGooseEntries,
+	"hermes":   collector.LoadHermesEntries,
 	"kimi":     collector.LoadKimiEntries,
 	"openclaw": collector.LoadOpenClawEntries,
 	"opencode": collector.LoadOpenCodeEntries,
+	"pi":       collector.LoadPiEntries,
 }

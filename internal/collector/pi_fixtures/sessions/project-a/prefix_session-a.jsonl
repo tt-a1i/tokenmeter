@@ -1,0 +1,2 @@
+{"type":"session_start","timestamp":"2026-04-15T10:00:00.000Z","sessionId":"session-a"}
+{"type":"message","timestamp":"2026-04-15T10:30:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":1500,"output":420,"cacheRead":8192,"cacheWrite":256,"totalTokens":10368,"cost":{"total":0.0537}}}}
