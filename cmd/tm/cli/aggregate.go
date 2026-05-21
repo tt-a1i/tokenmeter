@@ -325,11 +325,11 @@ func ParseDateFlagUntil(s string) (time.Time, error) {
 //     silently skipped.
 //   - Other adapter errors emit a stderr warning and skip that source.
 //
-// Known asymmetry: BucketWeekly uses Go's ISOWeek (Monday-based) in this
-// path; RunAggregate's SQL path uses SQLite strftime('%Y-W%W') which is
-// Sunday-based. Sunday rows can land in different week buckets between
-// the two paths. Daily and monthly are unaffected. Documented as a v1.1
-// limitation; resolution deferred to Phase B/C.
+// Weekly bucket parity: BucketWeekly uses weekKeySQLiteW (a Go reimpl of
+// SQLite strftime('%Y-W%W'), Monday-based with week 00 for days before
+// the year's first Monday) so the in-memory path here matches the SQL
+// push-down path used by RunAggregate. Both paths now produce identical
+// "YYYY-Www" keys; the Phase A.5 ISO 8601-vs-%W asymmetry is resolved.
 func RunAggregateAllSource(ctx context.Context, w io.Writer, a AggregateArgs, sqliteLoader AggregateLoader, adapters map[string]AdapterLoadFn) error {
 	since, err := parseDateFlag(a.Shared.Since)
 	if err != nil {
@@ -439,8 +439,7 @@ func aggregateEntriesInMemory(entries []storage.TokenUsageEntry, bucket Bucket, 
 		tt := t.In(loc)
 		switch bucket {
 		case BucketWeekly:
-			y, w := tt.ISOWeek()
-			return fmt.Sprintf("%04d-W%02d", y, w)
+			return weekKeySQLiteW(tt)
 		case BucketMonthly:
 			return tt.Format("2006-01")
 		case BucketSession:
@@ -548,4 +547,38 @@ func applyPricingMode(entries []storage.TokenUsageEntry, mode pricing.Mode) []st
 		}, pricing.SpeedStandard)
 	}
 	return out
+}
+
+// weekKeySQLiteW returns a "YYYY-Www" string equivalent to SQLite's
+// strftime('%Y-W%W', t). SQLite %W is Monday-based: week 00 contains
+// every day from January 1 up to (but not including) the year's first
+// Monday; week 01 starts on that Monday and each subsequent week is +7.
+// Empirical cross-checked against modernc.org/sqlite for several
+// boundary dates — see TestWeekKeySQLiteWMatchesSQLite.
+//
+// This helper backs RunAggregateAllSource's weekly bucketing so the
+// in-memory aggregation produces the same week keys as RunAggregate's
+// SQL push-down path. Without it, dates between New Year and the first
+// Monday of a year (or between the last Sunday and December 31) would
+// fall in different buckets across the two paths.
+func weekKeySQLiteW(t time.Time) string {
+	year := t.Year()
+	jan1 := time.Date(year, 1, 1, 0, 0, 0, 0, t.Location())
+	// Go's Weekday: Sun=0, Mon=1, ..., Sat=6.
+	//   jan1 weekday 1 (Mon) -> 0 days until first Monday (jan1 itself)
+	//   jan1 weekday 0 (Sun) -> 1 day
+	//   jan1 weekday 2 (Tue) -> 6 days
+	//   ...                     ((8 - weekday) % 7) covers all cases.
+	daysUntilFirstMonday := (8 - int(jan1.Weekday())) % 7
+	// YearDay() is 1..366; subtract 1 so jan1 has days=0. Using YearDay
+	// instead of t.Sub(jan1) avoids DST/leap-second drift from a float
+	// hour division.
+	days := t.YearDay() - 1
+	var week int
+	if days < daysUntilFirstMonday {
+		week = 0
+	} else {
+		week = (days-daysUntilFirstMonday)/7 + 1
+	}
+	return fmt.Sprintf("%04d-W%02d", year, week)
 }
