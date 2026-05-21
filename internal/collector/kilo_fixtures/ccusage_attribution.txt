@@ -1,0 +1,25 @@
+Kilo adapter fixture schema borrowed from ccusage v20 (MIT License)
+https://github.com/ryoppippi/ccusage
+
+Source: rust/crates/ccusage/src/adapter/kilo.rs
+  - KILO_DB_FILE_NAME const = "kilo.db"
+  - SQL "SELECT id, session_id, data FROM message" (copied verbatim
+    into kilo.go::kiloMessageQuery)
+  - tests::create_db_message CREATE TABLE statement (copied verbatim
+    into kilo_test.go::kiloFixtureSchema for in-test DB synthesis)
+  - JSON shape borrowed from loads_kilo_messages_from_sqlite test
+    vector
+
+Fixture data layout (built dynamically by kilo_test.go::setupKiloFixture):
+
+  $TempDir/
+    kilo.db    <- SQLite database; single `message` table with one row
+                  whose `data` column carries the assistant message JSON
+
+No binary fixture file is checked in — each test mints a DB via
+sql.Open("sqlite", path) under t.TempDir() and disposes via cleanup.
+
+Register the adapter via cmd/tm/cli/registry.go AllAdapters["kilo"].
+Default lookup path: $HOME/.local/share/kilo/kilo.db.
+Override: $KILO_DATA_DIR (comma-separated; each is a kilo root that
+contributes its own <root>/kilo.db).
