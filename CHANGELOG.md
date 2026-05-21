@@ -3,7 +3,7 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
-## v1.1.0 — 2026-05-22 (unreleased)
+## v1.1.0 — 2026-05-22
 
 ### Added — 13 new data sources (ccusage parity)
 - **OpenCode** (`tm opencode daily`) — `~/.local/share/opencode/` / `OPENCODE_DATA_DIR`
