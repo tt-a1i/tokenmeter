@@ -255,28 +255,10 @@ func ParseDateFlagUntil(s string) (time.Time, error) {
 	return t.Add(24 * time.Hour), nil
 }
 
-// aggGroup / modelStats are the in-memory aggregation types RunAggregate
-// used pre-push-down. RunSession (cli/session.go) still uses them; once
-// Task 6 swaps RunSession to AggregateUsage these become dead and can be
-// deleted alongside applyPricingMode below.
-type aggGroup struct {
-	tokens                                int64
-	cost                                  float64
-	models                                []string
-	seen                                  map[string]struct{}
-	input, output, cacheCreate, cacheRead int64
-	perModel                              map[string]*modelStats
-}
-
-type modelStats struct {
-	Input, Output, CacheCreate, CacheRead int64
-	Cost                                  float64
-}
-
 // applyPricingMode rewrites each entry's CostUSD according to mode. Kept
-// here for cli/blocks.go and cli/session.go, which still drive entry-level
-// pricing during their own push-down migration; once those land, this
-// helper becomes dead and can be deleted.
+// here for cli/blocks.go, which still drives entry-level pricing during
+// its own push-down migration; once that lands, this helper becomes dead
+// and can be deleted.
 //
 //   - ModeDisplay: leaves CostUSD untouched (trust the source row).
 //   - ModeCalculate: recomputes from tokens × pricing for the resolved model.

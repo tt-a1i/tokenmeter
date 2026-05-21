@@ -14,8 +14,9 @@ import (
 
 func TestRunSessionListMode(t *testing.T) {
 	var out bytes.Buffer
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SourceID: "1", SessionID: "abc", Model: "sonnet", InputTokens: 10, OutputTokens: 5, CostUSD: 0.001, Timestamp: time.Now()},
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "abc", Models: []string{"sonnet"}, InputTokens: 10, OutputTokens: 5, Cost: 0.001,
+			LastActivity: time.Now()},
 	}}
 	if err := cli.RunSession(context.Background(), &out, cli.SessionArgs{Shared: cli.Shared{}}, loader); err != nil {
 		t.Fatalf("RunSession: %v", err)
@@ -26,9 +27,9 @@ func TestRunSessionListMode(t *testing.T) {
 }
 
 func TestRunSessionOrderDesc(t *testing.T) {
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "aaa", Timestamp: mustTime("2026-05-19T10:00:00Z"), Model: "claude"},
-		{SessionID: "zzz", Timestamp: mustTime("2026-05-19T11:00:00Z"), Model: "claude"},
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "aaa", Models: []string{"claude"}, LastActivity: mustTime("2026-05-19T10:00:00Z")},
+		{Bucket: "zzz", Models: []string{"claude"}, LastActivity: mustTime("2026-05-19T11:00:00Z")},
 	}}
 	var buf bytes.Buffer
 	if err := cli.RunSession(context.Background(), &buf, cli.SessionArgs{Shared: cli.Shared{Order: "desc"}}, loader); err != nil {
@@ -45,11 +46,10 @@ func TestRunSessionOrderDesc(t *testing.T) {
 func TestRunSessionJSONSchema(t *testing.T) {
 	// JSON envelope is the stable contract — assert via Unmarshal rather
 	// than peeking at boxed-table characters.
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "abc", Timestamp: mustTime("2026-05-19T10:00:00Z"),
-			Model: "claude-opus-4-7", InputTokens: 100, OutputTokens: 50, CostUSD: 0.1},
-		{SessionID: "abc", Timestamp: mustTime("2026-05-19T11:30:00Z"),
-			Model: "claude-opus-4-7", InputTokens: 200, OutputTokens: 75, CostUSD: 0.2},
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "abc", Models: []string{"claude-opus-4-7"},
+			InputTokens: 300, OutputTokens: 125, Cost: 0.3,
+			LastActivity: mustTime("2026-05-19T11:30:00Z")},
 	}}
 	var buf bytes.Buffer
 	if err := cli.RunSession(context.Background(), &buf,
@@ -80,11 +80,59 @@ func TestRunSessionJSONSchema(t *testing.T) {
 	}
 }
 
+func TestRunSessionProjectPathInJSON(t *testing.T) {
+	// SessionBucket carries Project + LastActivity directly from SQL.
+	// Verify cli passes both through to the render layer.
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{
+			Bucket: "abc-123", Models: []string{"claude"},
+			InputTokens: 100, Cost: 1.0,
+			Project:      "/code/foo",
+			LastActivity: mustTime("2026-05-19T11:30:00Z"),
+		},
+	}}
+	args := cli.SessionArgs{Shared: cli.Shared{JSON: true}}
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf, args, loader); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"projectPath": "/code/foo"`) {
+		t.Errorf("expected projectPath in output:\n%s", out)
+	}
+	if !strings.Contains(out, `"sessionId": "abc-123"`) {
+		t.Errorf("expected sessionId in output:\n%s", out)
+	}
+}
+
+func TestRunSessionFiltersBySessionID(t *testing.T) {
+	// SessionArgs.SessionID restricts the displayed buckets even though
+	// the loader returned more.
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "abc", Models: []string{"claude"}, InputTokens: 1, LastActivity: mustTime("2026-05-19T10:00:00Z")},
+		{Bucket: "xyz", Models: []string{"claude"}, InputTokens: 2, LastActivity: mustTime("2026-05-19T11:00:00Z")},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf,
+		cli.SessionArgs{Shared: cli.Shared{JSON: true}, SessionID: "xyz"}, loader); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"sessionId": "xyz"`) {
+		t.Errorf("expected xyz in output:\n%s", out)
+	}
+	if strings.Contains(out, `"sessionId": "abc"`) {
+		t.Errorf("filtered-out session abc must not appear:\n%s", out)
+	}
+}
+
 func TestRunSessionModeCalculate(t *testing.T) {
-	// CostUSD=0 + tokens>0 + Mode=calculate => pricing recomputes non-zero.
-	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
-		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"),
-			InputTokens: 1_000_000, OutputTokens: 100_000, Model: "claude-opus-4-7", CostUSD: 0},
+	// AggregateUsageRow with cost=0 + tokens>0 + Mode=calculate =>
+	// cli's recalculateCost recomputes from pricing.
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "s1", Models: []string{"claude-opus-4-7"},
+			InputTokens: 1_000_000, OutputTokens: 100_000, Cost: 0,
+			LastActivity: mustTime("2026-05-19T10:00:00Z")},
 	}}
 	var buf bytes.Buffer
 	if err := cli.RunSession(context.Background(), &buf, cli.SessionArgs{Shared: cli.Shared{Mode: "calculate"}}, loader); err != nil {
@@ -92,5 +140,39 @@ func TestRunSessionModeCalculate(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "$0.00") {
 		t.Fatalf("mode=calculate should recompute cost, got:\n%s", buf.String())
+	}
+}
+
+func TestRunSessionModeAutoFallsBackOnZero(t *testing.T) {
+	// Codex-style zero-cost row + Mode=auto must trigger the recalc
+	// fallback, matching RunAggregate parity.
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "s1", Models: []string{"claude-opus-4-7"},
+			InputTokens: 1_000_000, OutputTokens: 100_000, Cost: 0,
+			LastActivity: mustTime("2026-05-19T10:00:00Z")},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf,
+		cli.SessionArgs{Shared: cli.Shared{Mode: "auto"}}, loader); err != nil {
+		t.Fatalf("RunSession: %v", err)
+	}
+	if strings.Contains(buf.String(), "$0.00") {
+		t.Fatalf("mode=auto with zero source cost must fall back to recalc, got:\n%s", buf.String())
+	}
+}
+
+func TestRunSessionForwardsFilterToBucketSession(t *testing.T) {
+	// RunSession must always tell storage to GROUP BY session_id, even
+	// when --breakdown is on (per-model rows are folded back inside cli).
+	stub := &capturingLoader{}
+	if err := cli.RunSession(context.Background(), &bytes.Buffer{},
+		cli.SessionArgs{Shared: cli.Shared{Breakdown: true}}, stub); err != nil {
+		t.Fatal(err)
+	}
+	if stub.captured.Bucket != storage.BucketSession {
+		t.Errorf("filter.Bucket: got %v, want storage.BucketSession", stub.captured.Bucket)
+	}
+	if !stub.captured.Breakdown {
+		t.Errorf("filter.Breakdown=true expected when Shared.Breakdown=true")
 	}
 }
