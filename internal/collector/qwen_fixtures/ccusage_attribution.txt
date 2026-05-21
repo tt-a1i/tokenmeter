@@ -1,0 +1,11 @@
+Fixture inspired by ccusage v20 (MIT License) — specifically the
+`falls_back_to_total_token_count_when_qwen_parts_are_missing` and
+the implicit path-shape contract enforced by
+rust/crates/ccusage/src/adapter/qwen/paths.rs::is_chat_file (the
+relative path from `<root>/projects` must be exactly
+`<project>/chats/<file>.jsonl` — no other depths are accepted).
+
+The fixture mounts the canonical `projects/<project>/chats/<file>.jsonl`
+shape under qwen_fixtures/ plus an off-depth `extra.jsonl` distractor
+sitting at `projects/<project>/extra.jsonl` so the depth filter test
+can verify it never surfaces.

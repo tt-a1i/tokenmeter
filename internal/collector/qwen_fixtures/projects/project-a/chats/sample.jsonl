@@ -1,0 +1,3 @@
+{"type":"user","timestamp":"2026-04-15T09:30:00.000Z","content":"hi"}
+{"type":"assistant","timestamp":"2026-04-15T09:30:15.500Z","sessionId":"sess-a","model":"qwen3-coder","usageMetadata":{"promptTokenCount":1500,"candidatesTokenCount":420,"cachedContentTokenCount":8192,"thoughtsTokenCount":256,"totalTokenCount":10368}}
+{"type":"assistant","timestamp":"2026-04-15T09:31:00.000Z","model":"qwen3-coder","usageMetadata":{"totalTokenCount":555}}

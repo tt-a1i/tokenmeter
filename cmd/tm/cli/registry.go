@@ -25,4 +25,5 @@ var AllAdapters = map[string]AdapterLoadFn{
 	"openclaw": collector.LoadOpenClawEntries,
 	"opencode": collector.LoadOpenCodeEntries,
 	"pi":       collector.LoadPiEntries,
+	"qwen":     collector.LoadQwenEntries,
 }
