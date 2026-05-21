@@ -70,33 +70,33 @@ WHERE model_config_json IS NOT NULL
 //   - id                            -> SessionID + entry dedup key
 //   - model_config_json["model_name"] -> Model (row dropped if missing)
 //   - created_at                    -> Timestamp (multi-format; see
-//                                       parseGooseTimestamp)
+//     parseGooseTimestamp)
 //   - input_tokens (preferred from
 //     accumulated_input_tokens then
 //     input_tokens)                 -> InputTokens
 //   - output_tokens (same prefer)   -> OutputTokens
 //   - total - (input + output)
 //     when total > input+output     -> folded INTO OutputTokens so the
-//                                       AllSource daily/weekly/monthly
-//                                       view matches ccusage's report
-//                                       total. Goose's "reasoning"
-//                                       remainder is recorded by ccusage
-//                                       as extra_total_tokens; v1.1's
-//                                       UsageEntry doesn't carry a
-//                                       reasoning slot yet, so the
-//                                       cheapest equivalent is to add
-//                                       it onto Output. Documented as a
-//                                       v1.1 behavior; v1.1.x may grow
-//                                       UsageEntry.ReasoningTokens.
+//     AllSource daily/weekly/monthly
+//     view matches ccusage's report
+//     total. Goose's "reasoning"
+//     remainder is recorded by ccusage
+//     as extra_total_tokens; v1.1's
+//     UsageEntry doesn't carry a
+//     reasoning slot yet, so the
+//     cheapest equivalent is to add
+//     it onto Output. Documented as a
+//     v1.1 behavior; v1.1.x may grow
+//     UsageEntry.ReasoningTokens.
 //   - provider_name                 -> intentionally unused here. The
-//                                       v1.1 UsageEntry has no provider
-//                                       slot; pricing.Resolve picks up
-//                                       the bare model name under
-//                                       ModeAuto. Goose's per-provider
-//                                       prefix lookup (e.g.
-//                                       "anthropic/claude-sonnet-4")
-//                                       is deferred to v1.1.x pricing
-//                                       enhancements.
+//     v1.1 UsageEntry has no provider
+//     slot; pricing.Resolve picks up
+//     the bare model name under
+//     ModeAuto. Goose's per-provider
+//     prefix lookup (e.g.
+//     "anthropic/claude-sonnet-4")
+//     is deferred to v1.1.x pricing
+//     enhancements.
 //
 // CostUSD is intentionally left at 0 — Goose's SQLite schema does not
 // store cost, and ccusage recomputes it from pricing. The AllSource
