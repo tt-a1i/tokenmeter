@@ -5,6 +5,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -49,15 +50,136 @@ type AggregateUsageRow struct {
 // joined to sessions. The returned rows are pre-sorted by Bucket ascending
 // (and by Model ascending when Breakdown=true).
 func (s *DB) AggregateUsage(ctx context.Context, f AggregateFilter) ([]AggregateUsageRow, error) {
-	return nil, fmt.Errorf("AggregateUsage: not implemented yet (Task 2/3/4)")
+	bucketExpr, err := s.bucketExpr(f.Bucket, f.Location)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		modelCol  string
+		groupCols string
+		orderCols string
+	)
+	if f.Breakdown {
+		modelCol = "u.model"
+		groupCols = bucketExpr + ", u.model"
+		orderCols = "1 ASC, u.model ASC"
+	} else {
+		modelCol = "GROUP_CONCAT(DISTINCT u.model)"
+		groupCols = bucketExpr
+		orderCols = "1 ASC"
+	}
+
+	q := `SELECT ` + bucketExpr + ` AS bucket,
+	             ` + modelCol + ` AS model_col,
+	             COALESCE(SUM(u.input_tokens), 0),
+	             COALESCE(SUM(u.output_tokens), 0),
+	             COALESCE(SUM(u.cache_creation_tokens), 0),
+	             COALESCE(SUM(u.cache_read_tokens), 0),
+	             COALESCE(SUM(u.cost_usd), 0)`
+	if f.Bucket == BucketSession {
+		q += `, MAX(s.cwd) AS project,
+		         MAX(u.timestamp) AS last_activity`
+	}
+	q += `
+	FROM token_usage u
+	JOIN sessions s ON s.session_id = u.session_id`
+
+	var args []any
+	var wheres []string
+	if !f.Since.IsZero() {
+		wheres = append(wheres, "u.timestamp >= ?")
+		args = append(args, formatStorageTime(f.Since))
+	}
+	if !f.Until.IsZero() {
+		wheres = append(wheres, "u.timestamp <= ?")
+		args = append(args, formatStorageTime(f.Until))
+	}
+	if f.Project != "" {
+		wheres = append(wheres, "s.cwd = ?")
+		args = append(args, f.Project)
+	}
+	if len(wheres) > 0 {
+		q += " WHERE " + strings.Join(wheres, " AND ")
+	}
+	q += " GROUP BY " + groupCols + " ORDER BY " + orderCols
+
+	rowsIter, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate usage: %w", err)
+	}
+	defer rowsIter.Close()
+
+	var out []AggregateUsageRow
+	for rowsIter.Next() {
+		var (
+			r          AggregateUsageRow
+			modelStr   sql.NullString
+			project    sql.NullString
+			lastActStr sql.NullString
+		)
+		dest := []any{
+			&r.Bucket, &modelStr,
+			&r.InputTokens, &r.OutputTokens,
+			&r.CacheCreateTokens, &r.CacheReadTokens, &r.Cost,
+		}
+		if f.Bucket == BucketSession {
+			dest = append(dest, &project, &lastActStr)
+		}
+		if err := rowsIter.Scan(dest...); err != nil {
+			return nil, fmt.Errorf("scan aggregate row: %w", err)
+		}
+		if f.Breakdown {
+			r.Model = modelStr.String
+		} else {
+			r.Models = splitAndSortModels(modelStr.String)
+		}
+		if f.Bucket == BucketSession {
+			r.Project = project.String
+			if lastActStr.Valid {
+				if ts, ok := parseStorageTime(lastActStr.String); ok {
+					r.LastActivity = ts
+				}
+			}
+		}
+		out = append(out, r)
+	}
+	return out, rowsIter.Err()
 }
 
-// _ keeps the imports tied to a real reference so this skeleton file
-// compiles before Task 2/3/4 land their SQL helpers. Each import will be
-// consumed by the real implementation (ctx → QueryContext, strings →
-// wheres = append + Join, sort → sort.Slice over the row slice).
-var (
-	_ = context.Background
-	_ = strings.Join
-	_ = sort.Slice
-)
+func (s *DB) bucketExpr(bucket AggregateBucket, loc *time.Location) (string, error) {
+	tzMod := ""
+	if loc != nil && loc != time.UTC {
+		_, offset := time.Now().In(loc).Zone()
+		// SQLite date modifiers take "+N hours" etc. We pass seconds for precision.
+		tzMod = fmt.Sprintf(", '%+d seconds'", offset)
+	}
+	switch bucket {
+	case BucketDay:
+		return "date(u.timestamp" + tzMod + ")", nil
+	case BucketWeek:
+		return "strftime('%Y-W%W', u.timestamp" + tzMod + ")", nil
+	case BucketMonth:
+		return "strftime('%Y-%m', u.timestamp" + tzMod + ")", nil
+	case BucketSession:
+		return "u.session_id", nil
+	default:
+		return "", fmt.Errorf("unknown AggregateBucket %d", bucket)
+	}
+}
+
+func splitAndSortModels(joined string) []string {
+	if joined == "" {
+		return nil
+	}
+	parts := strings.Split(joined, ",")
+	out := parts[:0]
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
