@@ -57,7 +57,7 @@ func Route(argv []string) (Command, error) {
 	}
 	name := argv[0]
 	tail := argv[1:]
-	shared, rest, err := ParseShared(tail)
+	shared, rest, err := ParseSharedForCommand(name, tail)
 	if err != nil {
 		return Command{}, err
 	}

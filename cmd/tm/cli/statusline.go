@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
+	tmconfig "github.com/tt-a1i/tokenmeter/internal/config"
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
 	"github.com/tt-a1i/tokenmeter/internal/statusline"
 )
@@ -31,6 +32,7 @@ type StatuslineOptions struct {
 	ContextLowThreshold    int
 	ContextMediumThreshold int
 	BurnRateDisplay        string
+	ConfigPath             string
 }
 
 type statuslineOpt func(*StatuslineOptions)
@@ -55,6 +57,11 @@ func RunStatusline(ctx context.Context, in io.Reader, out io.Writer, reader Stat
 	if err != nil {
 		return err
 	}
+	unified, err := tmconfig.LoadWithOptions(tmconfig.Options{ExplicitPath: o.ConfigPath})
+	if err != nil {
+		return err
+	}
+	applyUnifiedStatuslineConfig(&cfg, unified.Statusline)
 	if o.NoColor {
 		cfg.Color = false
 	}
@@ -74,6 +81,30 @@ func RunStatusline(ctx context.Context, in io.Reader, out io.Writer, reader Stat
 		reader = &modeAwareReader{inner: reader, mode: pricing.ParseMode(o.Mode)}
 	}
 	return statusline.Run(ctx, in, out, reader, cfg, now)
+}
+
+func applyUnifiedStatuslineConfig(dst *statusline.Config, src tmconfig.StatuslineConfig) {
+	if src.QuotaUSD != 0 {
+		dst.QuotaUSD = src.QuotaUSD
+	}
+	if src.Format != "" {
+		dst.Format = src.Format
+	}
+	switch src.Color {
+	case "true", "1", "yes", "on":
+		dst.Color = true
+	case "false", "0", "no", "off":
+		dst.Color = false
+	}
+	if src.ContextLowThreshold != 0 {
+		dst.ContextLowThreshold = src.ContextLowThreshold
+	}
+	if src.ContextMediumThreshold != 0 {
+		dst.ContextMediumThreshold = src.ContextMediumThreshold
+	}
+	if src.BurnRateDisplay != "" {
+		dst.BurnRateDisplay = src.BurnRateDisplay
+	}
 }
 
 // modeAwareReader wraps a StatuslineReader and rewrites the returned block's

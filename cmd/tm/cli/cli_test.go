@@ -1,6 +1,8 @@
 package cli_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -66,4 +68,53 @@ func TestParseSharedRejectsInvalidSpeedFlag(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid --speed to fail")
 	}
+}
+
+func TestParseSharedUsesConfigDefaults(t *testing.T) {
+	path := writeCLIConfig(t, `{"defaults":{"offline":true,"order":"desc","speed":"fast","compact":true,"token_limit":"max"}}`)
+	got, _, err := cli.ParseShared([]string{"daily", "--config", path})
+	if err != nil {
+		t.Fatalf("ParseShared: %v", err)
+	}
+	if !got.Offline || got.Order != "desc" || got.Speed != "fast" || !got.Compact || got.TokenLimit != "max" {
+		t.Fatalf("defaults not applied: %+v", got)
+	}
+}
+
+func TestParseSharedUsesCommandOverrides(t *testing.T) {
+	path := writeCLIConfig(t, `{"defaults":{"offline":true,"order":"asc"},"commands":{"daily":{"breakdown":true,"order":"desc"},"session":{"order":"desc"}}}`)
+	daily, _, err := cli.ParseSharedForCommand("daily", []string{"--config", path})
+	if err != nil {
+		t.Fatalf("daily ParseSharedForCommand: %v", err)
+	}
+	if !daily.Offline || !daily.Breakdown || daily.Order != "desc" {
+		t.Fatalf("daily command defaults mismatch: %+v", daily)
+	}
+	session, _, err := cli.ParseSharedForCommand("session", []string{"--config", path})
+	if err != nil {
+		t.Fatalf("session ParseSharedForCommand: %v", err)
+	}
+	if !session.Offline || session.Breakdown || session.Order != "desc" {
+		t.Fatalf("session command defaults mismatch: %+v", session)
+	}
+}
+
+func TestParseSharedCLIOverridesConfig(t *testing.T) {
+	path := writeCLIConfig(t, `{"defaults":{"offline":true,"order":"asc","speed":"standard"},"commands":{"daily":{"order":"desc"}}}`)
+	got, _, err := cli.ParseSharedForCommand("daily", []string{"--config", path, "--order", "asc", "--speed", "fast", "--offline=false"})
+	if err != nil {
+		t.Fatalf("ParseSharedForCommand: %v", err)
+	}
+	if got.Offline || got.Order != "asc" || got.Speed != "fast" {
+		t.Fatalf("CLI flags should override config: %+v", got)
+	}
+}
+
+func writeCLIConfig(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "tokenmeter.json")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return path
 }

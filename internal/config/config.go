@@ -17,23 +17,26 @@ type Config struct {
 	Commands       map[string]CommandOverride `json:"commands,omitempty"`
 	Pricing        PricingConfig              `json:"pricing,omitempty"`
 	Webhooks       WebhookConfig              `json:"webhooks,omitempty"`
+	Statusline     StatuslineConfig           `json:"statusline,omitempty"`
 	Sources        map[string]SourceConfig    `json:"sources,omitempty"`
 	LegacyPricing  bool                       `json:"-"`
 	LegacyWebhooks bool                       `json:"-"`
 }
 
 type Defaults struct {
-	Since     string `json:"since,omitempty"`
-	Until     string `json:"until,omitempty"`
-	JSON      bool   `json:"json,omitempty"`
-	Offline   bool   `json:"offline,omitempty"`
-	Timezone  string `json:"timezone,omitempty"`
-	Mode      string `json:"mode,omitempty"`
-	Order     string `json:"order,omitempty"`
-	Breakdown bool   `json:"breakdown,omitempty"`
-	Project   string `json:"project,omitempty"`
-	NoColor   bool   `json:"noColor,omitempty"`
-	Speed     string `json:"speed,omitempty"`
+	Since      string `json:"since,omitempty"`
+	Until      string `json:"until,omitempty"`
+	JSON       bool   `json:"json,omitempty"`
+	Offline    bool   `json:"offline,omitempty"`
+	Timezone   string `json:"timezone,omitempty"`
+	Mode       string `json:"mode,omitempty"`
+	Order      string `json:"order,omitempty"`
+	Breakdown  bool   `json:"breakdown,omitempty"`
+	Project    string `json:"project,omitempty"`
+	NoColor    bool   `json:"noColor,omitempty"`
+	Speed      string `json:"speed,omitempty"`
+	Compact    bool   `json:"compact,omitempty"`
+	TokenLimit string `json:"token_limit,omitempty"`
 }
 
 type CommandOverride = Defaults
@@ -41,6 +44,15 @@ type CommandOverride = Defaults
 type SourceConfig struct {
 	Defaults Defaults                   `json:"defaults,omitempty"`
 	Commands map[string]CommandOverride `json:"commands,omitempty"`
+}
+
+type StatuslineConfig struct {
+	QuotaUSD               float64 `json:"quota_usd,omitempty"`
+	Format                 string  `json:"format,omitempty"`
+	Color                  string  `json:"color,omitempty"`
+	ContextLowThreshold    int     `json:"context_low_threshold,omitempty"`
+	ContextMediumThreshold int     `json:"context_medium_threshold,omitempty"`
+	BurnRateDisplay        string  `json:"burn_rate_display,omitempty"`
 }
 
 type PricingConfig struct {
@@ -185,6 +197,60 @@ func (c *Config) HasPricing() bool {
 
 func (c *Config) HasWebhooks() bool {
 	return c != nil && len(c.Webhooks.Endpoints) > 0
+}
+
+func (c *Config) EffectiveDefaults(command string) Defaults {
+	if c == nil {
+		return Defaults{}
+	}
+	out := Defaults{}
+	mergeDefaults(&out, c.Defaults)
+	if c.Commands != nil {
+		mergeDefaults(&out, c.Commands[command])
+	}
+	return out
+}
+
+func mergeDefaults(dst *Defaults, src Defaults) {
+	if src.Since != "" {
+		dst.Since = src.Since
+	}
+	if src.Until != "" {
+		dst.Until = src.Until
+	}
+	if src.JSON {
+		dst.JSON = true
+	}
+	if src.Offline {
+		dst.Offline = true
+	}
+	if src.Timezone != "" {
+		dst.Timezone = src.Timezone
+	}
+	if src.Mode != "" {
+		dst.Mode = src.Mode
+	}
+	if src.Order != "" {
+		dst.Order = src.Order
+	}
+	if src.Breakdown {
+		dst.Breakdown = true
+	}
+	if src.Project != "" {
+		dst.Project = src.Project
+	}
+	if src.NoColor {
+		dst.NoColor = true
+	}
+	if src.Speed != "" {
+		dst.Speed = src.Speed
+	}
+	if src.Compact {
+		dst.Compact = true
+	}
+	if src.TokenLimit != "" {
+		dst.TokenLimit = src.TokenLimit
+	}
 }
 
 func firstExistingPath(explicit string) string {

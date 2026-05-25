@@ -127,6 +127,44 @@ func TestSaveWritesConfig(t *testing.T) {
 	}
 }
 
+func TestEffectiveDefaultsMergesDefaultsAndCommand(t *testing.T) {
+	cfg := &Config{
+		Defaults: Defaults{Offline: true, Order: "asc", Speed: "standard"},
+		Commands: map[string]CommandOverride{
+			"daily": {Breakdown: true, Order: "desc"},
+		},
+	}
+	got := cfg.EffectiveDefaults("daily")
+	if !got.Offline || !got.Breakdown || got.Order != "desc" || got.Speed != "standard" {
+		t.Fatalf("effective daily defaults mismatch: %+v", got)
+	}
+	session := cfg.EffectiveDefaults("session")
+	if !session.Offline || session.Breakdown || session.Order != "asc" {
+		t.Fatalf("effective session defaults mismatch: %+v", session)
+	}
+}
+
+func TestLoadStatuslineConfig(t *testing.T) {
+	home := setConfigTestHome(t)
+	writeConfigFile(t, filepath.Join(home, ".tokenmeter", "config.json"), `{
+		"statusline": {
+			"quota_usd": 25,
+			"format": "compact",
+			"color": "true",
+			"context_low_threshold": 45,
+			"context_medium_threshold": 75,
+			"burn_rate_display": "text"
+		}
+	}`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Statusline.QuotaUSD != 25 || cfg.Statusline.Color != "true" || cfg.Statusline.BurnRateDisplay != "text" {
+		t.Fatalf("statusline config not loaded: %+v", cfg.Statusline)
+	}
+}
+
 func setConfigTestHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()

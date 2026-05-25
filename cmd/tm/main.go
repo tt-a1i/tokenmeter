@@ -279,6 +279,7 @@ func runCLIDispatch(argv []string) error {
 				ContextLowThreshold:    cmd.Shared.ContextLowThreshold,
 				ContextMediumThreshold: cmd.Shared.ContextMediumThreshold,
 				BurnRateDisplay:        cmd.Shared.BurnRateDisplay,
+				ConfigPath:             cmd.Shared.Config,
 			}))
 	case "deprecated:daily", "deprecated:session", "deprecated:blocks-active":
 		return cli.RunDeprecatedAlias(ctx, os.Stdout, os.Stderr, cmd.Alias, cmd.Rest, db)
