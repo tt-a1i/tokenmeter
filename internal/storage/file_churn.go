@@ -2,10 +2,17 @@ package storage
 
 import (
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 )
+
+type ProjectScope struct {
+	All     bool
+	Project string
+	CWDs    []string
+}
 
 type FileChurnStats struct {
 	Path       string           `json:"path"`
@@ -29,9 +36,20 @@ type DailyChurn struct {
 }
 
 func (s *DB) TopChurnFiles(from, to time.Time, limit int) ([]FileChurnStats, error) {
+	return s.TopChurnFilesScoped(from, to, limit, ProjectScope{All: true})
+}
+
+func (s *DB) TopChurnFilesScoped(from, to time.Time, limit int, scope ProjectScope) ([]FileChurnStats, error) {
 	if limit <= 0 {
 		limit = 20
 	}
+	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
+	if err != nil {
+		return nil, err
+	}
+	args := []any{formatQueryTime(from), formatQueryTime(to)}
+	args = append(args, scopeArgs...)
+	args = append(args, limit)
 	rows, err := s.db.Query(`
 		SELECT file_path,
 		       COUNT(*) AS changes,
@@ -40,10 +58,11 @@ func (s *DB) TopChurnFiles(from, to time.Time, limit int) ([]FileChurnStats, err
 		       MAX(timestamp) AS last_seen
 		FROM file_changes
 		WHERE timestamp >= ? AND timestamp < ?
+		`+scopeClause+`
 		GROUP BY file_path
 		ORDER BY changes DESC, sessions DESC, file_path ASC
 		LIMIT ?
-	`, formatQueryTime(from), formatQueryTime(to), limit)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +86,7 @@ func (s *DB) TopChurnFiles(from, to time.Time, limit int) ([]FileChurnStats, err
 		return nil, err
 	}
 	for i := range out {
-		modes, err := s.fileModeCounts(out[i].Path, from, to)
+		modes, err := s.fileModeCountsScoped(out[i].Path, from, to, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -77,12 +96,23 @@ func (s *DB) TopChurnFiles(from, to time.Time, limit int) ([]FileChurnStats, err
 }
 
 func (s *DB) fileModeCounts(filePath string, from, to time.Time) (map[string]int64, error) {
+	return s.fileModeCountsScoped(filePath, from, to, ProjectScope{All: true})
+}
+
+func (s *DB) fileModeCountsScoped(filePath string, from, to time.Time, scope ProjectScope) (map[string]int64, error) {
+	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
+	if err != nil {
+		return nil, err
+	}
+	args := []any{filePath, formatQueryTime(from), formatQueryTime(to)}
+	args = append(args, scopeArgs...)
 	rows, err := s.db.Query(`
 		SELECT change_type, COUNT(*)
 		FROM file_changes
 		WHERE file_path = ? AND timestamp >= ? AND timestamp < ?
+		`+scopeClause+`
 		GROUP BY change_type
-	`, filePath, formatQueryTime(from), formatQueryTime(to))
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,18 +130,29 @@ func (s *DB) fileModeCounts(filePath string, from, to time.Time) (map[string]int
 }
 
 func (s *DB) ChurnHotspots(from, to time.Time, depth int, limit int) ([]HotspotStats, error) {
+	return s.ChurnHotspotsScoped(from, to, depth, limit, ProjectScope{All: true})
+}
+
+func (s *DB) ChurnHotspotsScoped(from, to time.Time, depth int, limit int, scope ProjectScope) ([]HotspotStats, error) {
 	if depth <= 0 {
 		depth = 2
 	}
 	if limit <= 0 {
 		limit = 20
 	}
+	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
+	if err != nil {
+		return nil, err
+	}
+	args := []any{formatQueryTime(from), formatQueryTime(to)}
+	args = append(args, scopeArgs...)
 	rows, err := s.db.Query(`
 		SELECT file_path, COUNT(*) AS changes
 		FROM file_changes
 		WHERE timestamp >= ? AND timestamp < ?
+		`+scopeClause+`
 		GROUP BY file_path
-	`, formatQueryTime(from), formatQueryTime(to))
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +214,10 @@ func (s *DB) ChurnHotspots(from, to time.Time, depth int, limit int) ([]HotspotS
 }
 
 func (s *DB) DailyChurnTrend(from, to time.Time) ([]DailyChurn, error) {
+	return s.DailyChurnTrendScoped(from, to, ProjectScope{All: true})
+}
+
+func (s *DB) DailyChurnTrendScoped(from, to time.Time, scope ProjectScope) ([]DailyChurn, error) {
 	if !to.After(from) {
 		return nil, nil
 	}
@@ -189,12 +234,19 @@ func (s *DB) DailyChurnTrend(from, to time.Time) ([]DailyChurn, error) {
 		byDay[key] = len(out) - 1
 	}
 
+	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
+	if err != nil {
+		return nil, err
+	}
+	args := []any{formatQueryTime(from), formatQueryTime(to)}
+	args = append(args, scopeArgs...)
 	rows, err := s.db.Query(`
 		SELECT strftime('%Y-%m-%d', timestamp) AS day, COUNT(*)
 		FROM file_changes
 		WHERE timestamp >= ? AND timestamp < ?
+		`+scopeClause+`
 		GROUP BY day
-	`, formatQueryTime(from), formatQueryTime(to))
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +262,56 @@ func (s *DB) DailyChurnTrend(from, to time.Time) ([]DailyChurn, error) {
 		}
 	}
 	return out, rows.Err()
+}
+
+func (s *DB) projectScopeClause(sessionColumn string, scope ProjectScope) (string, []any, error) {
+	if scope.All || (strings.TrimSpace(scope.Project) == "" && len(scope.CWDs) == 0) {
+		return "", nil, nil
+	}
+	ids, err := s.projectScopeSessionIDs(scope)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(ids) == 0 {
+		return " AND 1=0", nil, nil
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	return " AND " + sessionColumn + " IN (" + placeholders + ")", args, nil
+}
+
+func (s *DB) projectScopeSessionIDs(scope ProjectScope) ([]string, error) {
+	project := strings.TrimSpace(scope.Project)
+	cwds := map[string]struct{}{}
+	for _, cwd := range scope.CWDs {
+		if cleaned := filepath.Clean(strings.TrimSpace(cwd)); cleaned != "." && cleaned != "" {
+			cwds[cleaned] = struct{}{}
+		}
+	}
+	rows, err := s.db.Query(`SELECT session_id, COALESCE(cwd, '') FROM sessions`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id, cwd string
+		if err := rows.Scan(&id, &cwd); err != nil {
+			return nil, err
+		}
+		cleaned := filepath.Clean(cwd)
+		if _, ok := cwds[cleaned]; ok {
+			ids = append(ids, id)
+			continue
+		}
+		if project != "" && (cwd == project || filepath.Base(cleaned) == project) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
 }
 
 func hotspotPath(filePath string, depth int) string {

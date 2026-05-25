@@ -59,6 +59,48 @@ func TestTopFailingToolsSortsLimitsAndHonorsRange(t *testing.T) {
 	}
 }
 
+func TestTopFailingToolsScopedFiltersByProject(t *testing.T) {
+	db := toolErrorsTestDB(t)
+	base := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		seedToolCallWithCWD(t, db, "current-fail-"+string(rune('a'+i)), "current", "/repo/current", "Bash", "exit code 1", event.StatusFail, base.Add(time.Duration(i)*time.Hour))
+	}
+	seedToolCallWithCWD(t, db, "other-fail", "other", "/repo/other", "Edit", "String to replace not found", event.StatusFail, base.Add(time.Hour))
+
+	stats, err := db.TopFailingToolsScoped(base.Add(-time.Minute), base.AddDate(0, 0, 1), 10, ProjectScope{Project: "current"})
+	if err != nil {
+		t.Fatalf("TopFailingToolsScoped: %v", err)
+	}
+	if len(stats) != 1 || stats[0].Tool != "Bash" || stats[0].Failures != 3 {
+		t.Fatalf("unexpected scoped stats: %+v", stats)
+	}
+}
+
+func TestErrorPatternGroupsAndDailyScopedFiltersByProject(t *testing.T) {
+	db := toolErrorsTestDB(t)
+	base := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		seedToolCallWithCWD(t, db, "current-p-"+string(rune('a'+i)), "current", "/repo/current", "Bash", "No such file or directory: /tmp/a1.go", event.StatusFail, base.Add(time.Duration(i)*time.Hour))
+	}
+	seedToolCallWithCWD(t, db, "other-p", "other", "/repo/other", "Bash", "No such file or directory: /tmp/a1.go", event.StatusFail, base.Add(4*time.Hour))
+	scope := ProjectScope{Project: "current"}
+
+	patterns, err := db.ErrorPatternGroupsScoped(base.Add(-time.Minute), base.AddDate(0, 0, 1), 3, scope)
+	if err != nil {
+		t.Fatalf("ErrorPatternGroupsScoped: %v", err)
+	}
+	if len(patterns) != 1 || patterns[0].Count != 3 {
+		t.Fatalf("unexpected scoped patterns: %+v", patterns)
+	}
+	daily, err := db.DailyFailureRateScoped(base.Add(-time.Minute), base.AddDate(0, 0, 1), scope)
+	if err != nil {
+		t.Fatalf("DailyFailureRateScoped: %v", err)
+	}
+	if len(daily) != 2 || daily[0].Failures != 3 {
+		t.Fatalf("unexpected scoped daily: %+v", daily)
+	}
+}
+
 func TestErrorPatternGroupsAggregatesAcrossToolsAndThreshold(t *testing.T) {
 	db := toolErrorsTestDB(t)
 	base := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
@@ -136,8 +178,18 @@ func toolErrorsTestDB(t *testing.T) *DB {
 
 func seedToolCall(t *testing.T, db *DB, callID, sessionID, tool, result string, status event.ToolCallStatus, ts time.Time) {
 	t.Helper()
+	seedToolCallWithCWD(t, db, callID, sessionID, "", tool, result, status, ts)
+}
+
+func seedToolCallWithCWD(t *testing.T, db *DB, callID, sessionID, cwd, tool, result string, status event.ToolCallStatus, ts time.Time) {
+	t.Helper()
 	if err := db.UpsertSession(sessionID, event.PlatformClaude, ts); err != nil {
 		t.Fatalf("UpsertSession: %v", err)
+	}
+	if cwd != "" {
+		if err := db.UpdateSessionMeta(sessionID, cwd, "main"); err != nil {
+			t.Fatalf("UpdateSessionMeta: %v", err)
+		}
 	}
 	if _, err := db.InsertToolCallStart(callID, "agent-"+sessionID, sessionID, tool, "{}", ts); err != nil {
 		t.Fatalf("InsertToolCallStart: %v", err)

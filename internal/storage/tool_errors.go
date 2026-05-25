@@ -60,20 +60,32 @@ func normalizeToolErrorPath(path string) string {
 }
 
 func (s *DB) TopFailingTools(from, to time.Time, limit int) ([]ToolErrorStats, error) {
+	return s.TopFailingToolsScoped(from, to, limit, ProjectScope{All: true})
+}
+
+func (s *DB) TopFailingToolsScoped(from, to time.Time, limit int, scope ProjectScope) ([]ToolErrorStats, error) {
 	if limit <= 0 {
 		limit = 10
 	}
+	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
+	if err != nil {
+		return nil, err
+	}
+	args := []any{formatQueryTime(from), formatQueryTime(to)}
+	args = append(args, scopeArgs...)
+	args = append(args, limit)
 	rows, err := s.db.Query(`
 		SELECT tool_name,
 		       COUNT(*) AS total,
 		       SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) AS failures
 		FROM tool_calls
 		WHERE start_time >= ? AND start_time < ?
+		`+scopeClause+`
 		GROUP BY tool_name
 		HAVING failures > 0
 		ORDER BY failures DESC, total DESC, tool_name ASC
 		LIMIT ?
-	`, formatQueryTime(from), formatQueryTime(to), limit)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +109,7 @@ func (s *DB) TopFailingTools(from, to time.Time, limit int) ([]ToolErrorStats, e
 		return nil, err
 	}
 	for i := range out {
-		top, err := s.topPatternForTool(out[i].Tool, from, to)
+		top, err := s.topPatternForToolScoped(out[i].Tool, from, to, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -107,11 +119,22 @@ func (s *DB) TopFailingTools(from, to time.Time, limit int) ([]ToolErrorStats, e
 }
 
 func (s *DB) topPatternForTool(tool string, from, to time.Time) (string, error) {
+	return s.topPatternForToolScoped(tool, from, to, ProjectScope{All: true})
+}
+
+func (s *DB) topPatternForToolScoped(tool string, from, to time.Time, scope ProjectScope) (string, error) {
+	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
+	if err != nil {
+		return "", err
+	}
+	args := []any{tool, formatQueryTime(from), formatQueryTime(to)}
+	args = append(args, scopeArgs...)
 	rows, err := s.db.Query(`
 		SELECT result_summary
 		FROM tool_calls
 		WHERE tool_name = ? AND status = 'fail' AND start_time >= ? AND start_time < ?
-	`, tool, formatQueryTime(from), formatQueryTime(to))
+		`+scopeClause+`
+	`, args...)
 	if err != nil {
 		return "", err
 	}
@@ -134,14 +157,25 @@ func (s *DB) topPatternForTool(tool string, from, to time.Time) (string, error) 
 }
 
 func (s *DB) ErrorPatternGroups(from, to time.Time, minCount int) ([]ErrorPattern, error) {
+	return s.ErrorPatternGroupsScoped(from, to, minCount, ProjectScope{All: true})
+}
+
+func (s *DB) ErrorPatternGroupsScoped(from, to time.Time, minCount int, scope ProjectScope) ([]ErrorPattern, error) {
 	if minCount <= 0 {
 		minCount = 3
 	}
+	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
+	if err != nil {
+		return nil, err
+	}
+	args := []any{formatQueryTime(from), formatQueryTime(to)}
+	args = append(args, scopeArgs...)
 	rows, err := s.db.Query(`
 		SELECT tool_name, session_id, result_summary
 		FROM tool_calls
 		WHERE status = 'fail' AND start_time >= ? AND start_time < ?
-	`, formatQueryTime(from), formatQueryTime(to))
+		`+scopeClause+`
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +245,10 @@ func (s *DB) ErrorPatternGroups(from, to time.Time, minCount int) ([]ErrorPatter
 }
 
 func (s *DB) DailyFailureRate(from, to time.Time) ([]DailyRate, error) {
+	return s.DailyFailureRateScoped(from, to, ProjectScope{All: true})
+}
+
+func (s *DB) DailyFailureRateScoped(from, to time.Time, scope ProjectScope) ([]DailyRate, error) {
 	if !to.After(from) {
 		return nil, nil
 	}
@@ -227,14 +265,21 @@ func (s *DB) DailyFailureRate(from, to time.Time) ([]DailyRate, error) {
 		byDay[key] = len(rates) - 1
 	}
 
+	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
+	if err != nil {
+		return nil, err
+	}
+	args := []any{formatQueryTime(from), formatQueryTime(to)}
+	args = append(args, scopeArgs...)
 	rows, err := s.db.Query(`
 		SELECT strftime('%Y-%m-%d', start_time) AS day,
 		       COUNT(*) AS total,
 		       SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) AS failures
 		FROM tool_calls
 		WHERE start_time >= ? AND start_time < ?
+		`+scopeClause+`
 		GROUP BY day
-	`, formatQueryTime(from), formatQueryTime(to))
+	`, args...)
 	if err != nil {
 		return nil, err
 	}

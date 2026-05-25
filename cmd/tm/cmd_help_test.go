@@ -124,6 +124,12 @@ func TestHelp_AnalyzeMentionsFileChurn(t *testing.T) {
 	assertCmdHelpMentions(t, "analyze", "--file-churn")
 }
 
+func TestHelp_AnalyzeMentionsProjectScopeFlags(t *testing.T) {
+	for _, want := range []string{"--all-projects", "--project NAME", "--project-aliases JSON|PATH"} {
+		assertCmdHelpMentions(t, "analyze", want)
+	}
+}
+
 func TestHelpSearchMentionsAdvancedQueryFilters(t *testing.T) {
 	for _, want := range []string{"tool:NAME", "cost:>N", "tokens:<N", "since:DATE", "status:failed", "platform:codex"} {
 		assertCmdHelpMentions(t, "search", want)

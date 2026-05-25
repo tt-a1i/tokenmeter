@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/tt-a1i/tokenmeter/internal/projectalias"
 	"github.com/tt-a1i/tokenmeter/internal/render"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
@@ -37,16 +39,20 @@ func runAnalyze() error {
 		}
 	}
 	if opts.toolErrors || opts.fileChurn {
+		scope, scopeLabel, err := analyzeProjectScope(opts)
+		if err != nil {
+			return err
+		}
 		var toolReport render.ToolErrorReport
 		var fileReport render.FileChurnReport
 		if opts.toolErrors {
-			toolReport, err = loadToolErrorReport(db, from, to)
+			toolReport, err = loadToolErrorReport(db, from, to, scope, scopeLabel)
 			if err != nil {
 				return err
 			}
 		}
 		if opts.fileChurn {
-			fileReport, err = loadFileChurnReport(db, from, to, opts.limit)
+			fileReport, err = loadFileChurnReport(db, from, to, opts.limit, scope, scopeLabel)
 			if err != nil {
 				return err
 			}
@@ -100,31 +106,34 @@ func renderAnalyzeInsightsText(out *os.File, opts analyzeOptions, toolReport ren
 	return nil
 }
 
-func loadFileChurnReport(db *storage.DB, from, to time.Time, limit int) (render.FileChurnReport, error) {
-	top, err := db.TopChurnFiles(from, to, limit)
+func loadFileChurnReport(db *storage.DB, from, to time.Time, limit int, scope storage.ProjectScope, scopeLabel string) (render.FileChurnReport, error) {
+	top, err := db.TopChurnFilesScoped(from, to, limit, scope)
 	if err != nil {
 		return render.FileChurnReport{}, err
 	}
-	hotspots, err := db.ChurnHotspots(from, to, 2, 20)
+	hotspots, err := db.ChurnHotspotsScoped(from, to, 2, 20, scope)
 	if err != nil {
 		return render.FileChurnReport{}, err
 	}
-	daily, err := db.DailyChurnTrend(from, to)
+	daily, err := db.DailyChurnTrendScoped(from, to, scope)
 	if err != nil {
 		return render.FileChurnReport{}, err
 	}
-	return render.FileChurnReport{TopFiles: top, Hotspots: hotspots, Daily: daily}, nil
+	return render.FileChurnReport{ProjectScope: scopeLabel, TopFiles: top, Hotspots: hotspots, Daily: daily}, nil
 }
 
 type analyzeOptions struct {
-	rangeName  string
-	jsonOutput bool
-	toolErrors bool
-	fileChurn  bool
-	compact    bool
-	since      string
-	until      string
-	limit      int
+	rangeName      string
+	jsonOutput     bool
+	toolErrors     bool
+	fileChurn      bool
+	compact        bool
+	allProjects    bool
+	project        string
+	projectAliases string
+	since          string
+	until          string
+	limit          int
 }
 
 func parseAnalyzeArgs(args []string) (analyzeOptions, error) {
@@ -143,6 +152,20 @@ func parseAnalyzeArgs(args []string) (analyzeOptions, error) {
 			opts.toolErrors = true
 		case "--file-churn":
 			opts.fileChurn = true
+		case "--all-projects":
+			opts.allProjects = true
+		case "--project":
+			if i+1 >= len(args) {
+				return opts, fmt.Errorf("--project requires a value")
+			}
+			opts.project = args[i+1]
+			i++
+		case "--project-aliases":
+			if i+1 >= len(args) {
+				return opts, fmt.Errorf("--project-aliases requires a value")
+			}
+			opts.projectAliases = args[i+1]
+			i++
 		case "--limit":
 			if i+1 >= len(args) {
 				return opts, fmt.Errorf("--limit requires a value")
@@ -173,6 +196,9 @@ func parseAnalyzeArgs(args []string) (analyzeOptions, error) {
 	}
 	switch opts.rangeName {
 	case "week", "month", "all":
+		if opts.allProjects && opts.project != "" {
+			return opts, fmt.Errorf("--all-projects cannot be combined with --project")
+		}
 		return opts, nil
 	default:
 		return opts, fmt.Errorf("unknown analyze range %q (use week, month, all)", opts.rangeName)
@@ -202,20 +228,61 @@ func analyzeExplicitRange(since, until string) (time.Time, time.Time, string, er
 	return from, to, from.Format("2006-01-02") + " to " + to.AddDate(0, 0, -1).Format("2006-01-02"), nil
 }
 
-func loadToolErrorReport(db *storage.DB, from, to time.Time) (render.ToolErrorReport, error) {
-	top, err := db.TopFailingTools(from, to, 10)
+func analyzeProjectScope(opts analyzeOptions) (storage.ProjectScope, string, error) {
+	if opts.allProjects {
+		return storage.ProjectScope{All: true}, "all", nil
+	}
+	aliases, err := projectalias.Load(opts.projectAliases)
+	if err != nil {
+		return storage.ProjectScope{}, "", fmt.Errorf("load project aliases: %w", err)
+	}
+	if opts.project != "" {
+		return storage.ProjectScope{Project: opts.project, CWDs: aliasCWDs(aliases, opts.project)}, "explicit:" + opts.project, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return storage.ProjectScope{}, "", fmt.Errorf("get cwd: %w", err)
+	}
+	project := resolveAnalyzeProjectName(aliases, cwd)
+	cwds := append([]string{cwd}, aliasCWDs(aliases, project)...)
+	return storage.ProjectScope{Project: project, CWDs: cwds}, "current", nil
+}
+
+func resolveAnalyzeProjectName(aliases projectalias.Aliases, cwd string) string {
+	if aliases != nil {
+		return aliases.Resolve(cwd)
+	}
+	base := filepath.Base(filepath.Clean(cwd))
+	if base == "." || base == string(os.PathSeparator) {
+		return cwd
+	}
+	return base
+}
+
+func aliasCWDs(aliases projectalias.Aliases, project string) []string {
+	var out []string
+	for _, entry := range aliases {
+		if entry.Project == project {
+			out = append(out, entry.CWDs...)
+		}
+	}
+	return out
+}
+
+func loadToolErrorReport(db *storage.DB, from, to time.Time, scope storage.ProjectScope, scopeLabel string) (render.ToolErrorReport, error) {
+	top, err := db.TopFailingToolsScoped(from, to, 10, scope)
 	if err != nil {
 		return render.ToolErrorReport{}, err
 	}
-	patterns, err := db.ErrorPatternGroups(from, to, 3)
+	patterns, err := db.ErrorPatternGroupsScoped(from, to, 3, scope)
 	if err != nil {
 		return render.ToolErrorReport{}, err
 	}
-	daily, err := db.DailyFailureRate(from, to)
+	daily, err := db.DailyFailureRateScoped(from, to, scope)
 	if err != nil {
 		return render.ToolErrorReport{}, err
 	}
-	return render.ToolErrorReport{TopTools: top, Patterns: patterns, Daily: daily}, nil
+	return render.ToolErrorReport{ProjectScope: scopeLabel, TopTools: top, Patterns: patterns, Daily: daily}, nil
 }
 
 func analyzeRange(db *storage.DB, name string) (time.Time, time.Time, string, error) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -84,7 +85,7 @@ func TestRunAnalyzeToolErrorsJSONFormat(t *testing.T) {
 		}
 	}
 
-	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--json"})
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--all-projects", "--json"})
 	out := captureStdout(t, func() {
 		if err := runAnalyze(); err != nil {
 			t.Fatalf("runAnalyze: %v", err)
@@ -93,7 +94,8 @@ func TestRunAnalyzeToolErrorsJSONFormat(t *testing.T) {
 
 	var payload struct {
 		ToolErrors struct {
-			TopTools []struct {
+			ProjectScope string `json:"project_scope"`
+			TopTools     []struct {
 				Tool string `json:"tool"`
 			} `json:"top_tools"`
 			Patterns []struct {
@@ -109,6 +111,9 @@ func TestRunAnalyzeToolErrorsJSONFormat(t *testing.T) {
 	}
 	if len(payload.ToolErrors.TopTools) == 0 || payload.ToolErrors.TopTools[0].Tool != "Bash" {
 		t.Fatalf("unexpected top tools: %+v", payload.ToolErrors.TopTools)
+	}
+	if payload.ToolErrors.ProjectScope != "all" {
+		t.Fatalf("project_scope=%q want all", payload.ToolErrors.ProjectScope)
 	}
 	if len(payload.ToolErrors.Patterns) == 0 || payload.ToolErrors.Patterns[0].Count < 3 {
 		t.Fatalf("expected grouped pattern: %+v", payload.ToolErrors.Patterns)
@@ -133,7 +138,7 @@ func TestRunAnalyzeToolErrorsTextIncludesSections(t *testing.T) {
 		}
 	}
 
-	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors"})
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--all-projects"})
 	out := captureStdout(t, func() {
 		if err := runAnalyze(); err != nil {
 			t.Fatalf("runAnalyze: %v", err)
@@ -157,7 +162,7 @@ func TestRunAnalyzeFileChurnJSONFormat(t *testing.T) {
 		}
 	}
 
-	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--file-churn", "--limit", "1", "--json"})
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--file-churn", "--limit", "1", "--all-projects", "--json"})
 	out := captureStdout(t, func() {
 		if err := runAnalyze(); err != nil {
 			t.Fatalf("runAnalyze: %v", err)
@@ -166,7 +171,8 @@ func TestRunAnalyzeFileChurnJSONFormat(t *testing.T) {
 
 	var payload struct {
 		FileChurn struct {
-			TopFiles []struct {
+			ProjectScope string `json:"project_scope"`
+			TopFiles     []struct {
 				Path string `json:"path"`
 			} `json:"top_files"`
 			Hotspots []struct {
@@ -182,6 +188,9 @@ func TestRunAnalyzeFileChurnJSONFormat(t *testing.T) {
 	}
 	if len(payload.FileChurn.TopFiles) != 1 || payload.FileChurn.TopFiles[0].Path != "internal/storage/db.go" {
 		t.Fatalf("unexpected top files: %+v", payload.FileChurn.TopFiles)
+	}
+	if payload.FileChurn.ProjectScope != "all" {
+		t.Fatalf("project_scope=%q want all", payload.FileChurn.ProjectScope)
 	}
 	if len(payload.FileChurn.Hotspots) == 0 || payload.FileChurn.Hotspots[0].Path != "internal/storage" {
 		t.Fatalf("unexpected hotspots: %+v", payload.FileChurn.Hotspots)
@@ -206,7 +215,7 @@ func TestRunAnalyzeToolErrorsAndFileChurnJSONFormat(t *testing.T) {
 		}
 	}
 
-	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--file-churn", "--json"})
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--file-churn", "--all-projects", "--json"})
 	out := captureStdout(t, func() {
 		if err := runAnalyze(); err != nil {
 			t.Fatalf("runAnalyze: %v", err)
@@ -227,7 +236,7 @@ func TestRunAnalyzeFileChurnTextIncludesSections(t *testing.T) {
 	now := time.Now().Add(-24 * time.Hour)
 	seedAnalyzeCLISession(t, db, "file-churn-text", event.PlatformClaude, now, "sonnet", 2.5, "cmd/tm/analyze.go")
 
-	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--file-churn"})
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--file-churn", "--all-projects"})
 	out := captureStdout(t, func() {
 		if err := runAnalyze(); err != nil {
 			t.Fatalf("runAnalyze: %v", err)
@@ -237,6 +246,82 @@ func TestRunAnalyzeFileChurnTextIncludesSections(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("file churn output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestRunAnalyzeFileChurnDefaultsToCurrentProject(t *testing.T) {
+	home := t.TempDir()
+	db := openHomeDB(t, home)
+	now := time.Now().Add(-24 * time.Hour)
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	seedAnalyzeCLISessionWithCWD(t, db, "current-file-churn", event.PlatformClaude, cwd, now, "sonnet", 1, "current.go")
+	seedAnalyzeCLISessionWithCWD(t, db, "other-file-churn", event.PlatformClaude, filepath.Join(t.TempDir(), "other"), now, "sonnet", 1, "other.go")
+
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--file-churn", "--json"})
+	out := captureStdout(t, func() {
+		if err := runAnalyze(); err != nil {
+			t.Fatalf("runAnalyze: %v", err)
+		}
+	})
+	if !strings.Contains(out, `"project_scope": "current"`) || !strings.Contains(out, "current.go") || strings.Contains(out, "other.go") {
+		t.Fatalf("current project scope not applied:\n%s", out)
+	}
+}
+
+func TestRunAnalyzeAllProjectsIncludesAllFileChurn(t *testing.T) {
+	home := t.TempDir()
+	db := openHomeDB(t, home)
+	now := time.Now().Add(-24 * time.Hour)
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	seedAnalyzeCLISessionWithCWD(t, db, "current-file-churn-all", event.PlatformClaude, cwd, now, "sonnet", 1, "current.go")
+	seedAnalyzeCLISessionWithCWD(t, db, "other-file-churn-all", event.PlatformClaude, filepath.Join(t.TempDir(), "other"), now, "sonnet", 1, "other.go")
+
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--file-churn", "--all-projects", "--json"})
+	out := captureStdout(t, func() {
+		if err := runAnalyze(); err != nil {
+			t.Fatalf("runAnalyze: %v", err)
+		}
+	})
+	if !strings.Contains(out, `"project_scope": "all"`) || !strings.Contains(out, "current.go") || !strings.Contains(out, "other.go") {
+		t.Fatalf("all project scope not applied:\n%s", out)
+	}
+}
+
+func TestRunAnalyzeToolErrorsExplicitProjectAndAliases(t *testing.T) {
+	home := t.TempDir()
+	db := openHomeDB(t, home)
+	now := time.Now().Add(-24 * time.Hour)
+	aliasCWD := filepath.Join(t.TempDir(), "alias-worktree")
+	otherCWD := filepath.Join(t.TempDir(), "other")
+	seedAnalyzeCLISessionWithCWD(t, db, "alias-tool-errors", event.PlatformClaude, aliasCWD, now, "sonnet", 1, "alias.go")
+	seedAnalyzeCLISessionWithCWD(t, db, "other-tool-errors", event.PlatformClaude, otherCWD, now, "sonnet", 1, "other.go")
+	for i := 0; i < 3; i++ {
+		callID := "alias-tool-fail-" + string(rune('a'+i))
+		if _, err := db.InsertToolCallStart(callID, "agent-alias-tool-errors", "alias-tool-errors", "Bash", "{}", now.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatalf("insert fail start: %v", err)
+		}
+		if err := db.UpdateToolCallEnd(callID, "exit code 1", event.StatusFail, 50, now.Add(time.Duration(i)*time.Hour+time.Second)); err != nil {
+			t.Fatalf("insert fail end: %v", err)
+		}
+	}
+	if _, err := db.InsertToolCallStart("other-tool-fail", "agent-other-tool-errors", "other-tool-errors", "Edit", "{}", now); err != nil {
+		t.Fatalf("insert other fail start: %v", err)
+	}
+	if err := db.UpdateToolCallEnd("other-tool-fail", "String to replace not found", event.StatusFail, 50, now.Add(time.Second)); err != nil {
+		t.Fatalf("insert other fail end: %v", err)
+	}
+	aliases := `{"agmon":["` + aliasCWD + `"]}`
+
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--project", "agmon", "--project-aliases", aliases, "--json"})
+	out := captureStdout(t, func() {
+		if err := runAnalyze(); err != nil {
+			t.Fatalf("runAnalyze: %v", err)
+		}
+	})
+	if !strings.Contains(out, `"project_scope": "explicit:agmon"`) || !strings.Contains(out, `"tool": "Bash"`) || strings.Contains(out, `"tool": "Edit"`) {
+		t.Fatalf("explicit project alias scope not applied:\n%s", out)
 	}
 }
 
@@ -250,10 +335,23 @@ func seedAnalyzeCLISession(t *testing.T, db interface {
 	InsertTokenUsage(string, string, int, int, int, int, string, float64, time.Time, string) error
 }, sessionID string, platform event.Platform, ts time.Time, model string, cost float64, filePath string) {
 	t.Helper()
+	seedAnalyzeCLISessionWithCWD(t, db, sessionID, platform, "/repo/tokenmeter", ts, model, cost, filePath)
+}
+
+func seedAnalyzeCLISessionWithCWD(t *testing.T, db interface {
+	UpsertSession(string, event.Platform, time.Time) error
+	UpdateSessionMeta(string, string, string) error
+	UpsertAgent(string, string, string, string, time.Time) error
+	InsertToolCallStart(string, string, string, string, string, time.Time) (bool, error)
+	UpdateToolCallEnd(string, string, event.ToolCallStatus, int64, time.Time) error
+	InsertFileChange(string, string, event.FileChangeType, time.Time) error
+	InsertTokenUsage(string, string, int, int, int, int, string, float64, time.Time, string) error
+}, sessionID string, platform event.Platform, cwd string, ts time.Time, model string, cost float64, filePath string) {
+	t.Helper()
 	if err := db.UpsertSession(sessionID, platform, ts); err != nil {
 		t.Fatalf("upsert session: %v", err)
 	}
-	if err := db.UpdateSessionMeta(sessionID, "/repo/tokenmeter", "main"); err != nil {
+	if err := db.UpdateSessionMeta(sessionID, cwd, "main"); err != nil {
 		t.Fatalf("update meta: %v", err)
 	}
 	agentID := "agent-" + sessionID

@@ -11,9 +11,10 @@ import (
 )
 
 type ToolErrorReport struct {
-	TopTools []storage.ToolErrorStats `json:"top_tools"`
-	Patterns []storage.ErrorPattern   `json:"patterns"`
-	Daily    []storage.DailyRate      `json:"daily"`
+	ProjectScope string                   `json:"project_scope,omitempty"`
+	TopTools     []storage.ToolErrorStats `json:"top_tools"`
+	Patterns     []storage.ErrorPattern   `json:"patterns"`
+	Daily        []storage.DailyRate      `json:"daily"`
 }
 
 func (d defaultRenderer) RenderToolErrors(w io.Writer, report ToolErrorReport, opts Options) error {

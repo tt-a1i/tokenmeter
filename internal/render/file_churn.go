@@ -12,9 +12,10 @@ import (
 )
 
 type FileChurnReport struct {
-	TopFiles []storage.FileChurnStats `json:"top_files"`
-	Hotspots []storage.HotspotStats   `json:"hotspots"`
-	Daily    []storage.DailyChurn     `json:"daily"`
+	ProjectScope string                   `json:"project_scope,omitempty"`
+	TopFiles     []storage.FileChurnStats `json:"top_files"`
+	Hotspots     []storage.HotspotStats   `json:"hotspots"`
+	Daily        []storage.DailyChurn     `json:"daily"`
 }
 
 func (d defaultRenderer) RenderFileChurn(w io.Writer, report FileChurnReport, opts Options) error {

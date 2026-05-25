@@ -37,6 +37,50 @@ func TestTopChurnFilesSortsLimitsCountsSessionsModesAndRange(t *testing.T) {
 	}
 }
 
+func TestTopChurnFilesScopedFiltersByProject(t *testing.T) {
+	db := fileChurnTestDB(t)
+	base := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
+	seedFileChangeWithCWD(t, db, "current-1", "/repo/current", "internal/storage/db.go", event.FileEdit, base)
+	seedFileChangeWithCWD(t, db, "current-2", "/work/current", "cmd/tm/analyze.go", event.FileEdit, base.Add(time.Hour))
+	seedFileChangeWithCWD(t, db, "other", "/repo/other", "README.md", event.FileEdit, base.Add(2*time.Hour))
+
+	rows, err := db.TopChurnFilesScoped(base.Add(-time.Minute), base.AddDate(0, 0, 1), 10, ProjectScope{Project: "current"})
+	if err != nil {
+		t.Fatalf("TopChurnFilesScoped: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("len=%d want 2: %+v", len(rows), rows)
+	}
+	for _, row := range rows {
+		if row.Path == "README.md" {
+			t.Fatalf("other project leaked into scoped rows: %+v", rows)
+		}
+	}
+}
+
+func TestChurnHotspotsAndDailyScopedFiltersByProject(t *testing.T) {
+	db := fileChurnTestDB(t)
+	base := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
+	seedFileChangeWithCWD(t, db, "current", "/repo/current", "internal/storage/db.go", event.FileEdit, base)
+	seedFileChangeWithCWD(t, db, "other", "/repo/other", "docs/site/index.md", event.FileEdit, base.Add(time.Hour))
+	scope := ProjectScope{Project: "current"}
+
+	hotspots, err := db.ChurnHotspotsScoped(base.Add(-time.Minute), base.AddDate(0, 0, 1), 2, 10, scope)
+	if err != nil {
+		t.Fatalf("ChurnHotspotsScoped: %v", err)
+	}
+	if len(hotspots) != 1 || hotspots[0].Path != "internal/storage" {
+		t.Fatalf("unexpected scoped hotspots: %+v", hotspots)
+	}
+	daily, err := db.DailyChurnTrendScoped(base.Add(-time.Minute), base.AddDate(0, 0, 1), scope)
+	if err != nil {
+		t.Fatalf("DailyChurnTrendScoped: %v", err)
+	}
+	if len(daily) != 2 || daily[0].Changes != 1 {
+		t.Fatalf("unexpected scoped daily trend: %+v", daily)
+	}
+}
+
 func TestChurnHotspotsDepthAndDistinctFileCount(t *testing.T) {
 	db := fileChurnTestDB(t)
 	base := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
@@ -136,8 +180,18 @@ func fileChurnTestDB(t *testing.T) *DB {
 
 func seedFileChange(t *testing.T, db *DB, sessionID, filePath string, changeType event.FileChangeType, ts time.Time) {
 	t.Helper()
+	seedFileChangeWithCWD(t, db, sessionID, "", filePath, changeType, ts)
+}
+
+func seedFileChangeWithCWD(t *testing.T, db *DB, sessionID, cwd, filePath string, changeType event.FileChangeType, ts time.Time) {
+	t.Helper()
 	if err := db.UpsertSession(sessionID, event.PlatformClaude, ts); err != nil {
 		t.Fatalf("UpsertSession: %v", err)
+	}
+	if cwd != "" {
+		if err := db.UpdateSessionMeta(sessionID, cwd, "main"); err != nil {
+			t.Fatalf("UpdateSessionMeta: %v", err)
+		}
 	}
 	if err := db.InsertFileChange(sessionID, filePath, changeType, ts); err != nil {
 		t.Fatalf("InsertFileChange: %v", err)
