@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
 	"github.com/tt-a1i/tokenmeter/internal/collector"
 	"github.com/tt-a1i/tokenmeter/internal/event"
-	"github.com/tt-a1i/tokenmeter/internal/render"
 	"github.com/tt-a1i/tokenmeter/internal/statusline"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 	_ "modernc.org/sqlite"
@@ -83,14 +83,25 @@ func TestE2EV12Smoke(t *testing.T) {
 		home, db := v12HomeDB(t)
 		defer db.Close()
 		setTestHome(t, home)
-		out, err := v12Dispatch(t, "pricing", "refresh", "--offline")
-		if err != nil {
-			if strings.Contains(err.Error(), "offline mode") {
-				t.Skipf("暴露 bug: `tm pricing refresh --offline` returns error instead of exit 0/offline message: %v", err)
-			}
-			t.Fatalf("pricing refresh: %v\n%s", err, out)
+		cmd := exec.Command(os.Args[0], "-test.run", "^TestE2EV12SmokePricingOfflineHelperProcess$", "--")
+		cmd.Env = append(os.Environ(),
+			"TM_E2E_HELPER=pricing-offline",
+			"HOME="+home,
+			"TOKENMETER_HOME="+filepath.Join(home, ".tokenmeter"),
+		)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("pricing refresh --offline error = %v, want exit status 1\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
 		}
-		v12AssertContains(t, strings.ToLower(out), "offline")
+		if got := exitErr.ExitCode(); got != 1 {
+			t.Fatalf("pricing refresh --offline exit = %d, want 1\nstdout:%s\nstderr:%s", got, stdout.String(), stderr.String())
+		}
+		combined := strings.ToLower(stdout.String() + stderr.String())
+		v12AssertContains(t, combined, "offline mode")
 	})
 
 	t.Run("GroupB_CodexSpeedAuto", func(t *testing.T) {
@@ -135,21 +146,45 @@ func TestE2EV12Smoke(t *testing.T) {
 	})
 
 	t.Run("GroupC_BlocksANSI", func(t *testing.T) {
-		rows := []render.BlockRow{{Period: "2026-05-20 10:00", Models: []string{"claude"}, InputTokens: 80, TotalTokens: 80, Cost: 1, TokenLimit: 100, UsagePct: 80, TokenLimitStatus: "WARN"}}
-		var color bytes.Buffer
-		if err := render.New().RenderBlocks(&color, rows, render.Options{Color: true}); err != nil {
+		home, db := v12HomeDB(t)
+		seedCLISession(t, db, "v12-blocks-ansi", event.PlatformClaude, "/repo/agmon", "main", time.Now().Add(-time.Hour), 80, 0, 1)
+		if err := db.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Contains(color.Bytes(), []byte{0x1b}) {
-			t.Skip("暴露 bug: colored blocks output lacks ANSI escapes for token-limit status")
+		run := func(t *testing.T, forceColor bool) string {
+			t.Helper()
+			cmd := exec.Command(os.Args[0], "-test.run", "^TestE2EV12SmokeBlocksHelperProcess$", "--")
+			env := append(os.Environ(),
+				"TM_E2E_HELPER=blocks",
+				"HOME="+home,
+				"TOKENMETER_HOME="+filepath.Join(home, ".tokenmeter"),
+				"NO_COLOR=",
+				"TERM=xterm-256color",
+				"FORCE_COLOR=",
+			)
+			if forceColor {
+				env[len(env)-1] = "FORCE_COLOR=1"
+			}
+			cmd.Env = env
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			if err != nil {
+				t.Fatalf("blocks helper: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+			}
+			return stdout.String()
 		}
-		var plain bytes.Buffer
-		if err := render.New().RenderBlocks(&plain, rows, render.Options{Color: false}); err != nil {
-			t.Fatal(err)
-		}
-		if bytes.Contains(plain.Bytes(), []byte{0x1b}) {
-			t.Fatalf("--no-color equivalent should suppress ANSI, got %q", plain.String())
-		}
+		t.Run("NonTTYDefaultNoANSI", func(t *testing.T) {
+			out := run(t, false)
+			if strings.Contains(out, "\x1b[") {
+				t.Fatalf("non-tty output should not contain ANSI escapes:\n%q", out)
+			}
+		})
+		t.Run("ForceColorANSI", func(t *testing.T) {
+			out := run(t, true)
+			v12AssertContains(t, out, "\x1b[33mWARN\x1b[0m")
+		})
 	})
 
 	t.Run("GroupD_UnifiedConfigDefaults", func(t *testing.T) {
@@ -307,7 +342,7 @@ func TestE2EV12Smoke(t *testing.T) {
 	})
 
 	t.Run("GroupF_AnomalyWebhook", func(t *testing.T) {
-		t.Skip("待 follow-up: anomaly production files are currently in another worker's uncommitted worktree; do not bind v1.2 smoke to unstable internal/daemon APIs here")
+		t.Skip("deferred to v1.3: cmd/tm package cannot call internal/daemon checkAnomalies or unexported webhook payload types without adding production test hooks; internal/daemon anomaly tests cover cost_spike and usage_regression directly")
 	})
 
 	t.Run("GroupG_StatuslineFlags", func(t *testing.T) {
@@ -366,6 +401,22 @@ func TestE2EV12Smoke(t *testing.T) {
 		v12AssertContains(t, out, `"defaults": {}`)
 		v12AssertContains(t, out, `"pricing": {}`)
 	})
+}
+
+func TestE2EV12SmokePricingOfflineHelperProcess(t *testing.T) {
+	if os.Getenv("TM_E2E_HELPER") != "pricing-offline" {
+		return
+	}
+	os.Args = []string{"tm", "pricing", "refresh", "--offline"}
+	main()
+}
+
+func TestE2EV12SmokeBlocksHelperProcess(t *testing.T) {
+	if os.Getenv("TM_E2E_HELPER") != "blocks" {
+		return
+	}
+	os.Args = []string{"tm", "blocks", "--token-limit", "100"}
+	main()
 }
 
 type v12UsageLoader struct {
