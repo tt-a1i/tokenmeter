@@ -62,6 +62,25 @@ func TestLoadWebhookConfigMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestLoadWebhookConfigFromUnifiedConfig(t *testing.T) {
+	base := setWebhookTestHome(t)
+	path := filepath.Join(base, "config.json")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"webhooks":{"endpoints":[{"url":"https://example.test/unified","events":["budget_warn"],"format":"json"}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadWebhookConfig()
+	if err != nil {
+		t.Fatalf("LoadWebhookConfig: %v", err)
+	}
+	if cfg == nil || len(cfg.Endpoints) != 1 || cfg.Endpoints[0].URL != "https://example.test/unified" {
+		t.Fatalf("unified webhook config not loaded: %+v", cfg)
+	}
+}
+
 func TestPostWebhookSlackFormat(t *testing.T) {
 	var got map[string]string
 	srv := captureWebhookServer(t, &got)

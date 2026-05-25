@@ -106,6 +106,16 @@ func Route(argv []string) (Command, error) {
 			return Command{Name: "help"}, fmt.Errorf("unknown pricing command")
 		}
 		cmd.Name = "pricing:refresh"
+	case "config":
+		if len(rest) == 0 {
+			return Command{Name: "help"}, fmt.Errorf("unknown config command")
+		}
+		switch rest[0] {
+		case "show", "path", "init":
+			cmd.Name = "config:" + rest[0]
+		default:
+			return Command{Name: "help"}, fmt.Errorf("unknown config command: %s", rest[0])
+		}
 	case "help", "":
 		cmd.Name = "help"
 	default:

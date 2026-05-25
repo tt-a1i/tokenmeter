@@ -10,8 +10,8 @@ import (
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
 )
 
-func ConfigureRuntimePricing(ctx context.Context, offline bool) error {
-	m, err := pricing.LoadRuntime(ctx, pricing.RuntimeOptions{Offline: offline})
+func ConfigureRuntimePricing(ctx context.Context, offline bool, configPath string) error {
+	m, err := pricing.LoadRuntime(ctx, pricing.RuntimeOptions{Offline: offline, ConfigPath: configPath})
 	if err != nil {
 		return err
 	}
@@ -19,8 +19,8 @@ func ConfigureRuntimePricing(ctx context.Context, offline bool) error {
 	return nil
 }
 
-func RunPricingRefresh(ctx context.Context, out io.Writer, offline bool) error {
-	m, err := pricing.RefreshRuntime(ctx, pricing.RuntimeOptions{Offline: offline})
+func RunPricingRefresh(ctx context.Context, out io.Writer, offline bool, configPath string) error {
+	m, err := pricing.RefreshRuntime(ctx, pricing.RuntimeOptions{Offline: offline, ConfigPath: configPath})
 	if err != nil {
 		return err
 	}

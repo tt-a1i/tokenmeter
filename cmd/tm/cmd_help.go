@@ -178,6 +178,15 @@ var cmdHelps = map[string]cmdHelp{
 		examples:    []string{"tm pricing refresh"},
 		seeAlso:     []string{"daily"},
 	},
+	"config": {
+		name:        "config",
+		short:       "Unified config file tools",
+		usage:       "tm config <show|path|init> [--config path]",
+		description: "Show, locate, or initialize the unified TokenMeter JSON config.",
+		options:     []optionHelp{{"--config PATH", "use an explicit config file path"}},
+		examples:    []string{"tm config show", "tm config path", "tm config init"},
+		seeAlso:     []string{"daily", "pricing"},
+	},
 	"blocks": {
 		name:        "blocks",
 		short:       "5-hour session blocks + burn rate",

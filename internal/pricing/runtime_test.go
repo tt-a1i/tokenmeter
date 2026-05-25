@@ -125,6 +125,42 @@ func TestLoadRuntimeNetworkFailureFallsBack(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeUsesConfigPricingOptions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOMEDRIVE", "")
+	t.Setenv("HOMEPATH", "")
+	t.Setenv("TOKENMETER_CONFIG", "")
+	configPath := filepath.Join(home, ".tokenmeter", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"pricing":{"runtimeSyncURL":"https://example.test/pricing.json","cacheTTLHours":72}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotURL string
+	m, err := LoadRuntime(context.Background(), RuntimeOptions{
+		CachePath: filepath.Join(t.TempDir(), "pricing-cache.json"),
+		Now:       func() time.Time { return time.Date(2026, 5, 25, 10, 0, 0, 0, time.UTC) },
+		Fetch: func(_ context.Context, url string) ([]byte, error) {
+			gotURL = url
+			return []byte(`{"config-model":{"input_cost_per_token":0.000001,"output_cost_per_token":0.000002}}`), nil
+		},
+		Async: func(fn func()) { fn() },
+	})
+	if err != nil {
+		t.Fatalf("LoadRuntime: %v", err)
+	}
+	if gotURL != "https://example.test/pricing.json" {
+		t.Fatalf("runtime sync URL = %q", gotURL)
+	}
+	if _, ok := m.Resolve("config-model"); !ok {
+		t.Fatal("config runtime sync pricing was not loaded")
+	}
+}
+
 func writeRuntimeCacheFile(t *testing.T, fetchedAt time.Time, raw string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "pricing-cache.json")

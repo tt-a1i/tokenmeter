@@ -97,3 +97,15 @@ func TestRouteAllSourceUnchanged(t *testing.T) {
 		t.Fatalf("--no-scan flag did not propagate")
 	}
 }
+
+func TestRouteConfigSubcommands(t *testing.T) {
+	for _, sub := range []string{"show", "path", "init"} {
+		cmd, err := cli.Route([]string{"config", sub})
+		if err != nil {
+			t.Fatalf("Route config %s: %v", sub, err)
+		}
+		if cmd.Name != "config:"+sub {
+			t.Fatalf("Name=%q want config:%s", cmd.Name, sub)
+		}
+	}
+}

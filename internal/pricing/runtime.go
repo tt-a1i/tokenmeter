@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/appdir"
+	tmconfig "github.com/tt-a1i/tokenmeter/internal/config"
 )
 
 const (
@@ -24,11 +25,14 @@ const (
 // RuntimeOptions controls runtime LiteLLM pricing refresh. Zero values use
 // production defaults; tests inject paths, time, fetch, and async behavior.
 type RuntimeOptions struct {
-	Offline   bool
-	CachePath string
-	Now       func() time.Time
-	Fetch     func(context.Context, string) ([]byte, error)
-	Async     func(func())
+	Offline    bool
+	CachePath  string
+	ConfigPath string
+	CacheTTL   time.Duration
+	URLs       []string
+	Now        func() time.Time
+	Fetch      func(context.Context, string) ([]byte, error)
+	Async      func(func())
 }
 
 type runtimeCache struct {
@@ -46,14 +50,18 @@ func DefaultCachePath() string {
 // fallback and refreshed asynchronously. Missing cache performs one best-effort
 // synchronous refresh; network failures fall back without error.
 func LoadRuntime(ctx context.Context, opts RuntimeOptions) (*Map, error) {
-	opts = fillRuntimeOptions(opts)
+	var err error
+	opts, err = fillRuntimeOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 	m := LoadEmbedded()
 	offline := opts.Offline || envOffline()
 
 	cache, cacheOK := readRuntimeCache(opts.CachePath)
 	if cacheOK {
 		_ = m.LoadJSON(cache.Data)
-		if offline || opts.Now().Sub(cache.FetchedAt) < RuntimeCacheTTL {
+		if offline || opts.Now().Sub(cache.FetchedAt) < opts.CacheTTL {
 			return m, nil
 		}
 		opts.Async(func() {
@@ -74,13 +82,20 @@ func LoadRuntime(ctx context.Context, opts RuntimeOptions) (*Map, error) {
 
 // RefreshRuntime fetches LiteLLM pricing and updates the runtime cache.
 func RefreshRuntime(ctx context.Context, opts RuntimeOptions) (*Map, error) {
-	opts = fillRuntimeOptions(opts)
+	var err error
+	opts, err = fillRuntimeOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 	if opts.Offline || envOffline() {
 		return nil, fmt.Errorf("pricing refresh skipped: offline mode")
 	}
-	data, err := opts.Fetch(ctx, liteLLMPrimaryURL)
-	if err != nil {
-		data, err = opts.Fetch(ctx, liteLLMFallbackURL)
+	var data []byte
+	for _, url := range opts.URLs {
+		data, err = opts.Fetch(ctx, url)
+		if err == nil {
+			break
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -95,9 +110,26 @@ func RefreshRuntime(ctx context.Context, opts RuntimeOptions) (*Map, error) {
 	return m, nil
 }
 
-func fillRuntimeOptions(opts RuntimeOptions) RuntimeOptions {
+func fillRuntimeOptions(opts RuntimeOptions) (RuntimeOptions, error) {
+	cfg, err := tmconfig.LoadWithOptions(tmconfig.Options{ExplicitPath: opts.ConfigPath})
+	if err != nil {
+		return opts, err
+	}
 	if opts.CachePath == "" {
 		opts.CachePath = DefaultCachePath()
+	}
+	if opts.CacheTTL == 0 {
+		opts.CacheTTL = RuntimeCacheTTL
+	}
+	if cfg.Pricing.CacheTTLHours > 0 {
+		opts.CacheTTL = time.Duration(cfg.Pricing.CacheTTLHours) * time.Hour
+	}
+	if len(opts.URLs) == 0 {
+		if cfg.Pricing.RuntimeSyncURL != "" {
+			opts.URLs = []string{cfg.Pricing.RuntimeSyncURL}
+		} else {
+			opts.URLs = []string{liteLLMPrimaryURL, liteLLMFallbackURL}
+		}
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -108,7 +140,7 @@ func fillRuntimeOptions(opts RuntimeOptions) RuntimeOptions {
 	if opts.Async == nil {
 		opts.Async = func(fn func()) { go fn() }
 	}
-	return opts
+	return opts, nil
 }
 
 func readRuntimeCache(path string) (runtimeCache, bool) {

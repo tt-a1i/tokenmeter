@@ -26,6 +26,7 @@ import (
 	"sync"
 
 	"github.com/tt-a1i/tokenmeter/internal/appdir"
+	tmconfig "github.com/tt-a1i/tokenmeter/internal/config"
 )
 
 type modelPricing struct {
@@ -153,6 +154,24 @@ func LoadPricingOverrides() {
 	claudePricingTable = clonePricingTable(defaultClaudePricingTable)
 	codexPricingTable = clonePricingTable(defaultCodexPricingTable)
 
+	cfg, err := tmconfig.Load()
+	if err != nil {
+		log.Printf("pricing override: load config: %v", err)
+		return
+	}
+	if cfg.HasPricing() {
+		if cfg.LegacyPricing {
+			log.Printf("pricing override: using legacy %s; migrate pricing overrides to %s", appdir.PathFor("pricing.json", "pricing.json"), tmconfig.GlobalPath())
+		}
+		claudePricingTable = prependPricingOverrides("claude", "unified config", fromConfigPricingRules(cfg.Pricing.Claude), defaultClaudePricingTable)
+		codexPricingTable = prependPricingOverrides("codex", "unified config", fromConfigPricingRules(cfg.Pricing.Codex), defaultCodexPricingTable)
+		return
+	}
+
+	loadLegacyPricingOverridesDirect()
+}
+
+func loadLegacyPricingOverridesDirect() {
 	path := appdir.PathFor("pricing.json", "pricing.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -161,15 +180,29 @@ func LoadPricingOverrides() {
 		}
 		return
 	}
-
 	var overrides pricingOverridesFile
 	if err := json.Unmarshal(data, &overrides); err != nil {
 		log.Printf("pricing override: parse %s: %v", path, err)
 		return
 	}
-
+	log.Printf("pricing override: using legacy %s; migrate pricing overrides to %s", path, tmconfig.GlobalPath())
 	claudePricingTable = prependPricingOverrides("claude", path, overrides.Claude, defaultClaudePricingTable)
 	codexPricingTable = prependPricingOverrides("codex", path, overrides.Codex, defaultCodexPricingTable)
+}
+
+func fromConfigPricingRules(rules []tmconfig.PricingRule) []pricingOverrideRule {
+	out := make([]pricingOverrideRule, len(rules))
+	for i, r := range rules {
+		out[i] = pricingOverrideRule{
+			Match:              r.Match,
+			InputPerMillion:    r.InputPerMillion,
+			OutputPerMillion:   r.OutputPerMillion,
+			CacheCreatePerMill: r.CacheCreatePerMill,
+			CacheReadPerMill:   r.CacheReadPerMill,
+			FastMultiplier:     r.FastMultiplier,
+		}
+	}
+	return out
 }
 
 func prependPricingOverrides(platform, path string, overrides []pricingOverrideRule, defaults []modelPricing) []modelPricing {

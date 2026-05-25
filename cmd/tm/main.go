@@ -204,7 +204,7 @@ func main() {
 		}
 	case "help", "-h", "--help":
 		printHelp()
-	case "daily", "weekly", "monthly", "session", "blocks", "statusline", "pricing",
+	case "daily", "weekly", "monthly", "session", "blocks", "statusline", "pricing", "config",
 		"cost", "report", "status", "top",
 		"amp", "codebuff", "copilot", "droid", "gemini", "goose", "hermes",
 		"kilo", "kimi", "openclaw", "opencode", "pi", "qwen":
@@ -247,9 +247,13 @@ func runCLIDispatch(argv []string) error {
 		return err
 	}
 	if cmd.Name == "pricing:refresh" {
-		return cli.RunPricingRefresh(ctx, os.Stdout, cmd.Shared.Offline)
+		return cli.RunPricingRefresh(ctx, os.Stdout, cmd.Shared.Offline, cmd.Shared.Config)
 	}
-	if err := cli.ConfigureRuntimePricing(ctx, cmd.Shared.Offline); err != nil {
+	switch cmd.Name {
+	case "config:show", "config:path", "config:init":
+		return cli.RunConfig(ctx, os.Stdout, strings.TrimPrefix(cmd.Name, "config:"), cmd.Shared.Config)
+	}
+	if err := cli.ConfigureRuntimePricing(ctx, cmd.Shared.Offline, cmd.Shared.Config); err != nil {
 		return err
 	}
 	db := mustOpenDB()
@@ -927,6 +931,7 @@ var helpSections = []helpSection{
 	}},
 	{"Configuration", []helpCommand{
 		{"tag <id> [text]", "Set/clear session note"},
+		{"config <subcommand>", "Show, locate, or initialize config"},
 		{"pricing refresh", "Refresh LiteLLM pricing cache"},
 		{"budget <subcommand>", "Manage budgets: list, set, delete, usage"},
 		{"webhook <subcommand>", "Manage webhooks: list, test, replay"},

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/appdir"
+	tmconfig "github.com/tt-a1i/tokenmeter/internal/config"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
 
@@ -99,6 +100,21 @@ type DaemonWebhookPayload struct {
 }
 
 func LoadWebhookConfig() (*WebhookConfig, error) {
+	cfg, err := tmconfig.Load()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.HasWebhooks() {
+		if cfg.LegacyWebhooks {
+			log.Printf("webhook config: using legacy %s; migrate webhooks to %s", appdir.PathFor("webhooks.json", "webhooks.json"), tmconfig.GlobalPath())
+		}
+		webhooks := webhookConfigFromUnified(cfg.Webhooks)
+		return &webhooks, nil
+	}
+	return loadLegacyWebhookConfigDirect()
+}
+
+func loadLegacyWebhookConfigDirect() (*WebhookConfig, error) {
 	path := appdir.PathFor("webhooks.json", "webhooks.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -112,7 +128,28 @@ func LoadWebhookConfig() (*WebhookConfig, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	log.Printf("webhook config: using legacy %s; migrate webhooks to %s", path, tmconfig.GlobalPath())
 	return &cfg, nil
+}
+
+func webhookConfigFromUnified(cfg tmconfig.WebhookConfig) WebhookConfig {
+	out := WebhookConfig{Endpoints: make([]EndpointConfig, len(cfg.Endpoints))}
+	for i, ep := range cfg.Endpoints {
+		out.Endpoints[i] = EndpointConfig{
+			URL:    ep.URL,
+			Events: append([]string(nil), ep.Events...),
+			Format: ep.Format,
+			Retry: RetryPolicy{
+				MaxAttempts:           ep.Retry.MaxAttempts,
+				InitialBackoffSeconds: ep.Retry.InitialBackoffSeconds,
+			},
+			Thresholds: WebhookThresholds{
+				SessionHighCostUSD: ep.Thresholds.SessionHighCostUSD,
+				ToolFailureRatePct: ep.Thresholds.ToolFailureRatePct,
+			},
+		}
+	}
+	return out
 }
 
 func PostWebhook(ctx context.Context, ep EndpointConfig, event string, payload any) error {
