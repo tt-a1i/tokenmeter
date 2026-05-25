@@ -121,7 +121,7 @@ make install
 ```bash
 tm setup                                           # 首次运行：注册 Claude hooks
 tm daily --compact                                 # 今天所有来源的紧凑汇总
-tm pricing refresh --offline                       # 查看/刷新 LiteLLM 定价缓存；离线时用 fallback
+tm pricing refresh                                 # 从 LiteLLM 同步定价（首次需要联网）
 tm config show                                     # 查看统一配置和 legacy merge 结果
 tm config init                                     # 初始化 ~/.tokenmeter/config.json
 tm blocks --token-limit 100000                     # 当前 5 小时窗口 + token 阈值进度
@@ -129,6 +129,16 @@ tm daily --instances --project-aliases '{"core":["/Users/admin/code/core"]}'
 tm analyze --tool-errors                           # 工具失败模式分析
 tm web                                             # 浏览器 dashboard（独立进程）
 ```
+
+### Offline mode
+
+```bash
+tm pricing refresh --offline
+# pricing refresh skipped: offline mode
+# exit code: 1 when no refresh is attempted
+```
+
+`--offline` 用于确认命令不会联网；它不是 quickstart 的 happy path。
 
 正常使用 Claude Code 或 Codex，TokenMeter 在后台自动采集所有数据。完整命令对照参见 [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md)。
 

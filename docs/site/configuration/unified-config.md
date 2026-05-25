@@ -49,25 +49,23 @@ Legacy installs may also have files under `~/.agmon`.
 
 Do not move legacy files manually unless a migration command tells you to.
 
-## Current Effective Scope (v1.x Phase 1)
+## Current Effective Scope
 
-The unified config schema is larger than the first runtime integration.
-
-Current effective behavior:
+Current effective behavior in v1.2:
 
 | Area | Status | Notes |
 | --- | --- | --- |
 | Search path | ✅ Effective | `--config`, `TOKENMETER_CONFIG`, local config, then global config. |
 | Legacy pricing merge | ✅ Effective | Missing unified pricing can fall back to legacy `pricing.json`. |
 | Legacy webhook merge | ✅ Effective | Missing unified webhooks can fall back to legacy `webhooks.json`. |
+| `defaults` | ✅ Effective | Shared defaults apply to CLI commands: `since`, `until`, `json`, `offline`, `timezone`, `mode`, `order`, `breakdown`, `project`, `noColor`, `speed`, `compact`, and `token_limit`. |
+| `commands.<name>` | ✅ Effective | Per-command overrides merge on top of `defaults`; explicit boolean `false` now overrides inherited `true`. |
 | Pricing runtime sync | ✅ Effective | `pricing.runtimeSyncURL` and `pricing.cacheTTLHours` are read by runtime pricing. |
-| Webhook endpoints | ✅ Effective | `webhooks.endpoints` and endpoint thresholds are part of the loaded model. |
-| Statusline | ⏳ Partially effective | Unified `statusline` fields are being wired through the v1.x config follow-up. |
-| `defaults` | ⏳ Not fully effective | Schema exists; broad CLI default application is part of the follow-up. |
-| `commands.<name>` | ⏳ Not fully effective | Schema exists; per-command defaults are part of the follow-up. |
-| `sources` | ⏳ Not effective | Schema exists as nested defaults/commands; source data-dir aliases are not current schema fields. |
+| Webhook endpoints | ✅ Effective | `webhooks.endpoints`, endpoint thresholds, and `webhooks.anomaly_cooldown` are loaded. |
+| Statusline | ✅ Effective | Unified statusline fields apply to `tm statusline`: `quota_usd`, `format`, `color`, `context_low_threshold`, `context_medium_threshold`, and `burn_rate_display`. |
+| `sources.<name>` | ⏳ Not effective | Schema exists as nested defaults/commands, but source-specific defaults are not applied yet. |
 
-For strict automation, prefer explicit CLI flags until the relevant section is marked effective.
+`session-length` is still CLI-only. The current `Defaults` struct has no `sessionLength` or `session_length` JSON field.
 
 ## Schema Shape
 
@@ -127,6 +125,8 @@ Important spelling details:
 
 `token_limit` is snake_case in the current struct tag.
 
+`json`, `offline`, `breakdown`, `noColor`, and `compact` are presence-aware booleans. A command override can set them to `false` and replace an inherited `true`.
+
 There is no `sessionLength` field in the current `Defaults` struct.
 
 There is no `session_length` field in the current `Defaults` struct.
@@ -158,6 +158,33 @@ This section is intended for stable per-command preferences.
 It should not replace one-off date filters in scripts.
 
 CLI flags should remain the highest-precedence override.
+
+Explicit `false` overrides inherited `true`:
+
+```json
+{
+  "defaults": {
+    "breakdown": true
+  },
+  "commands": {
+    "daily": {
+      "breakdown": false
+    }
+  }
+}
+```
+
+In v1.2, `commands.daily.breakdown=false` really disables breakdown for `tm daily` even when `defaults.breakdown=true`.
+
+## Migration From v1.1
+
+Older v1.1 builds treated `false` boolean values in `commands.<name>` like unset values.
+
+Current v1.2 builds preserve explicit `false`.
+
+If you previously wrote `breakdown: false`, `json: false`, `offline: false`, `noColor: false`, or `compact: false` only as documentation, remove those keys before upgrading.
+
+Keep them when you want the command override to disable a `true` value inherited from `defaults`.
 
 ## Pricing
 
@@ -203,6 +230,10 @@ Example:
 ```json
 {
   "webhooks": {
+    "anomaly_cooldown": {
+      "cost_spike_hours": 24,
+      "usage_regression_minutes": 60
+    },
     "endpoints": [
       {
         "url": "https://example.test/tokenmeter",
@@ -214,7 +245,10 @@ Example:
         },
         "thresholds": {
           "session_high_cost_usd": 10,
-          "tool_failure_rate_pct": 20
+          "tool_failure_rate_pct": 20,
+          "cost_spike_ratio": 2.5,
+          "regression_failure_count_min": 3,
+          "regression_ratio_min": 1.5
         }
       }
     ]
@@ -222,7 +256,7 @@ Example:
 }
 ```
 
-Endpoint `retry` and `thresholds` fields currently use snake_case.
+`anomaly_cooldown`, endpoint `retry`, and endpoint `thresholds` fields currently use snake_case.
 
 Keep webhook secrets out of this file when possible.
 
@@ -326,6 +360,6 @@ If webhooks do not load, check endpoint nesting under `webhooks.endpoints`.
 
 If source roots do not change, use source environment variables instead of `sources`.
 
-If statusline settings do not appear, compare your installed version with the statusline config follow-up release.
+If statusline settings do not appear, run `tm config show --config PATH` and confirm the JSON tags match the field names above.
 
 If docs and behavior differ, prefer command help and release notes for the installed version.

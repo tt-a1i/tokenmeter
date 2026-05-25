@@ -117,7 +117,7 @@ make install
 ```bash
 tm setup                                           # one-time: register Claude hooks
 tm daily --compact                                 # compact daily summary across all sources
-tm pricing refresh --offline                       # inspect/refresh LiteLLM pricing cache with fallback
+tm pricing refresh                                 # sync LiteLLM pricing; first run needs network access
 tm config show                                     # show unified config and legacy merge result
 tm config init                                     # initialize ~/.tokenmeter/config.json
 tm blocks --token-limit 100000                     # 5-hour window with token-limit progress
@@ -125,6 +125,16 @@ tm daily --instances --project-aliases '{"core":["/Users/admin/code/core"]}'
 tm analyze --tool-errors                           # tool failure pattern analysis
 tm web                                             # browser dashboard (separate process)
 ```
+
+### Offline mode
+
+```bash
+tm pricing refresh --offline
+# pricing refresh skipped: offline mode
+# exit code: 1 when no refresh is attempted
+```
+
+Use `--offline` to confirm the command will not reach the network; it is not the quickstart happy path.
 
 Use Claude Code or Codex normally — TokenMeter captures everything in the background. See [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md) for the full old→new command mapping.
 
