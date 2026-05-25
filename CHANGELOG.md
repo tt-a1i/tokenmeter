@@ -11,7 +11,7 @@ The "Unreleased" section captures work merged but not yet tagged.
 
 v1.2.0 turns TokenMeter from a ccusage-aligned local usage reporter into a broader local observability tool for AI coding agents. It closes the largest v1.1 parity gaps: runtime pricing, Codex speed tiers, OpenCode SQLite, Droid sidecar metadata, responsive tables, statusline controls, blocks token limits, project aliases, and unified config. It also goes beyond ccusage with tool error analysis, file churn reporting, anomaly webhooks, and an advanced FTS5 search DSL.
 
-### ✨ Aligned with ccusage (11 P0/P1)
+### ✨ Aligned with ccusage (9 P0/P1 features)
 
 - **LiteLLM runtime pricing sync with offline fallback** — runtime cache refresh via `tm pricing refresh`; `--offline` keeps network access disabled. ([e0ba1c4](https://github.com/tt-a1i/tokenmeter/commit/e0ba1c4))
 - **Codex `--speed` tier support** — `auto`, `standard`, and `fast`, including `~/.codex/config.toml` `service_tier` detection. ([e0ba1c4](https://github.com/tt-a1i/tokenmeter/commit/e0ba1c4))
@@ -20,17 +20,22 @@ v1.2.0 turns TokenMeter from a ccusage-aligned local usage reporter into a broad
 - **Responsive terminal tables with `--compact`** — daily, weekly, monthly, session, and blocks output adapt to narrow terminals. ([b10272d](https://github.com/tt-a1i/tokenmeter/commit/b10272d))
 - **Statusline context thresholds and burn-rate display modes** — configurable context warning/danger thresholds plus `off`, `emoji`, `text`, and `emoji-text` burn-rate views. ([b10272d](https://github.com/tt-a1i/tokenmeter/commit/b10272d))
 - **`tm blocks --token-limit` progress bar** — annotates 5-hour billing windows with usage percentage and status. ([992ebd1](https://github.com/tt-a1i/tokenmeter/commit/992ebd1))
-- **Statusline arrows and project aliases** — `--instances` and `--project-aliases` normalize multi-worktree reporting. ([7215719](https://github.com/tt-a1i/tokenmeter/commit/7215719), [3b34305](https://github.com/tt-a1i/tokenmeter/commit/3b34305))
+- **Project alias grouping flags** — `--instances` and `--project-aliases` normalize multi-worktree reporting. ([7215719](https://github.com/tt-a1i/tokenmeter/commit/7215719))
 - **Unified config model** — `~/.tokenmeter/config.json`, `tm config show/path/init`, legacy pricing/webhook merge, defaults, per-command overrides, and presence-aware bools. ([2c8b307](https://github.com/tt-a1i/tokenmeter/commit/2c8b307), [892de23](https://github.com/tt-a1i/tokenmeter/commit/892de23), [4c415ea](https://github.com/tt-a1i/tokenmeter/commit/4c415ea))
-- **VitePress documentation site** — docs skeleton, source pages, guides, and sidebar coverage under `docs/site/`. ([585b343](https://github.com/tt-a1i/tokenmeter/commit/585b343), [97e2734](https://github.com/tt-a1i/tokenmeter/commit/97e2734))
-- **Documentation accuracy** — README and CLAUDE.md no longer claim the removed Bubbletea TUI is the current default. ([e13a38c](https://github.com/tt-a1i/tokenmeter/commit/e13a38c))
 
 ### 🚀 Beyond ccusage (4 features)
 
-- **Tool error pattern analysis** — `tm analyze --tool-errors` ranks failing tools, failure rates, and repeated error patterns. ([5ec2cb3](https://github.com/tt-a1i/tokenmeter/commit/5ec2cb3))
-- **File churn heatmap** — `tm analyze --file-churn` surfaces frequently edited files and churn hotspots. ([caaa4ce](https://github.com/tt-a1i/tokenmeter/commit/caaa4ce))
+- **Tool error pattern analysis** — `tm analyze --tool-errors` ranks failing tools, groups repeated error patterns, and shows a daily failure-rate trend sparkline for the last 14 displayed days. ([5ec2cb3](https://github.com/tt-a1i/tokenmeter/commit/5ec2cb3))
+- **File churn heatmap** — `tm analyze --file-churn` reports top changed files with mode breakdown, depth-2 directory hotspots such as `internal/storage`, and a daily file-change sparkline. ([caaa4ce](https://github.com/tt-a1i/tokenmeter/commit/caaa4ce))
 - **Webhook anomaly detection** — `cost_spike` and `usage_regression` events with cooldown controls. ([ae5f4bf](https://github.com/tt-a1i/tokenmeter/commit/ae5f4bf), [4c415ea](https://github.com/tt-a1i/tokenmeter/commit/4c415ea))
 - **FTS5 advanced search query DSL** — `tool:`, `session:`, `cost:`, `tokens:`, `since:`, `until:`, `status:`, and `platform:` filters for `tm search`. ([b6d00ad](https://github.com/tt-a1i/tokenmeter/commit/b6d00ad))
+
+### 📚 Documentation
+
+- **VitePress documentation site** — docs skeleton, source pages, guides, and sidebar coverage under `docs/site/`. ([585b343](https://github.com/tt-a1i/tokenmeter/commit/585b343), [97e2734](https://github.com/tt-a1i/tokenmeter/commit/97e2734))
+- **Front-page docs refresh** — README and docs home now highlight Wave 2 capabilities such as config, compact output, project aliases, and tool error analysis. ([432baab](https://github.com/tt-a1i/tokenmeter/commit/432baab))
+- **Documentation accuracy** — README and CLAUDE.md no longer claim the removed Bubbletea TUI is the current default. ([e13a38c](https://github.com/tt-a1i/tokenmeter/commit/e13a38c))
+- **Release preparation docs** — v1.2 changelog and release notes draft were added for tag preparation. ([7b16df5](https://github.com/tt-a1i/tokenmeter/commit/7b16df5))
 
 ### 🐛 Bug fixes
 
@@ -42,7 +47,8 @@ v1.2.0 turns TokenMeter from a ccusage-aligned local usage reporter into a broad
 
 - Help regression tests now cover daily, weekly, monthly, session, blocks, statusline, analyze, and advanced search help text. ([5ef334f](https://github.com/tt-a1i/tokenmeter/commit/5ef334f), [bd28965](https://github.com/tt-a1i/tokenmeter/commit/bd28965), [b6d00ad](https://github.com/tt-a1i/tokenmeter/commit/b6d00ad))
 - Wave 2 and Wave 3 acceptance reviews are archived under `.hive/wave2-review.md` and `.hive/wave3-review.md`. ([6df4dc9](https://github.com/tt-a1i/tokenmeter/commit/6df4dc9), [2ba4bd8](https://github.com/tt-a1i/tokenmeter/commit/2ba4bd8))
-- v1.2 smoke coverage validates key CLI flows before release. ([62ea6c3](https://github.com/tt-a1i/tokenmeter/commit/62ea6c3))
+- v1.2 smoke coverage validates key CLI flows before release, with tightened release expectations. ([62ea6c3](https://github.com/tt-a1i/tokenmeter/commit/62ea6c3), [1796905](https://github.com/tt-a1i/tokenmeter/commit/1796905))
+- v1.2 prerelease verification report captures final release readiness evidence. ([4e86ef9](https://github.com/tt-a1i/tokenmeter/commit/4e86ef9))
 
 ### ⚠️ Breaking changes
 
@@ -66,6 +72,8 @@ v1.2.0 turns TokenMeter from a ccusage-aligned local usage reporter into a broad
 - `session-length` is not in unified config defaults; continue using `--session-length`.
 - Anomaly webhook cooldown is in-memory; daemon restart resets cooldown state.
 - Tool error pattern grouping depends on captured `result_summary`; old databases may have failures without summaries.
+- Droid sidecar JSONL model fallback scans only the first 500 lines as a large-log heuristic.
+- OpenCode SQLite open, query, and scan errors are silently skipped for batch resilience; verbose diagnostics are a follow-up.
 
 ### Acknowledgements
 
