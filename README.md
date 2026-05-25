@@ -39,19 +39,33 @@
 
 ## 功能
 
-- **多平台** — Claude Code + Codex 统一视图
-- **Token 追踪** — 输入、输出、缓存创建、缓存读取 — 按会话、按模型细分
-- **费用估算** — 模型感知定价（Opus / Sonnet / Haiku / GPT-5 / GPT-4.1）
-- **费用趋势** — Web Dashboard 内置费用图、热力图和模型/工具分布，一眼看清每日花费走势
-- **工具调用追踪** — 名称、参数、结果、耗时、状态
-- **对话消息** — 浏览每个会话中的用户提示词，支持 `/` 搜索过滤
-- **会话标签** — `tm tag <id> "备注"` 给会话打标签，方便回忆
-- **时间范围统计** — 今日 / 本周 / 本月 / 全部 Token 与费用聚合
-- **费用报告** — `tm report --weekly/--monthly` 生成 Markdown 费用报告（按模型、按会话细分）
-- **分享战报** — `tm share [session]` 生成可复制的 Markdown 会话复盘，适合群内分享或交接
-- **Web Dashboard** — `tm web` 启动本地 Web 面板，支持深色/浅色模式、面积图、会话详情、对话回顾
-- **实时更新** — daemon 广播事件，`tm watch` 与 Web Dashboard 可订阅实时变化
-- **单二进制** — `tm setup` 注入 hooks 后即可采集，核心功能无外部服务依赖
+### Multi-source aggregation
+
+- **Claude Code / Codex 实时采集** — hooks、JSONL watcher 和 SQLite 统一到同一套报表。
+- **15 个本地 source** — Claude Code、Codex、OpenCode、Amp、Gemini CLI、GitHub Copilot CLI、Goose、Codebuff、Hermes、Kilo、Kimi、OpenClaw、pi-agent、Droid、Qwen。
+- **OpenCode SQLite 支持** — 自动读取新版 `opencode.db`，同时保留 JSON 文件兼容。
+- **Droid sidecar fallback** — Droid session 主 JSON 缺 model 时，会从 sidecar JSONL 回填。
+
+### TokenMeter 独有实时能力（相对 ccusage）
+
+- **Live event stream** — daemon 通过 Unix socket 接收 Claude hook 事件，并广播给 `tm watch` / Web Dashboard。
+- **Web Dashboard** — `tm web` 提供费用趋势、热力图、模型/工具分布、会话详情和对话回顾。
+- **Budget alerts + webhooks** — 月度预算、阈值提醒和 webhook endpoint 都在本地配置。
+- **Tool error pattern analysis** — `tm analyze --tool-errors` 聚合失败工具、错误片段和高风险会话，这是 ccusage 没有的诊断视角。
+
+### Accurate pricing
+
+- **LiteLLM 运行期定价同步** — `tm pricing refresh` 更新 24 小时缓存，`--offline` 可强制使用本地 fallback。
+- **Codex speed tier** — `--speed auto|standard|fast` 支持 Codex 定价层；`auto` 会读取 `~/.codex/config.toml` 的 `service_tier`。
+- **模型感知估算** — Opus / Sonnet / Haiku / GPT-5 / GPT-4.1 等模型按 token 类型拆分成本。
+
+### Configuration and ergonomics
+
+- **统一配置** — `tm config show` / `tm config init` 管理 `~/.tokenmeter/config.json`，并兼容 legacy `pricing.json` / `webhooks.json`。
+- **窄终端 compact 表格** — `tm daily --compact` 在小窗口下输出更紧凑的汇总。
+- **Blocks token limit** — `tm blocks --token-limit 100000` 显示 5 小时窗口进度条和硬阈值。
+- **项目别名归一化** — `tm daily --instances --project-aliases '{"core":["/Users/admin/code/core"]}'` 可把多个路径归并到同一项目名。
+- **单二进制** — `tm setup` 注入 hooks 后即可采集，核心功能无外部服务依赖。
 
 ## 支持平台
 
@@ -59,6 +73,15 @@
 |------|---------|------|
 | **Claude Code** | Hooks + JSONL 日志监听 | `tm setup` 自动注入 hooks 到 `~/.claude/settings.json` |
 | **Codex** | JSONL 日志监听 | 自动轮询 `~/.codex/sessions/` |
+| **OpenCode** | SQLite + JSON 扫描 | 支持新版 `opencode.db` 和旧 JSON 文件 |
+| **Amp** | JSON 扫描 | 读取本地 thread JSON |
+| **Gemini CLI** | JSON / JSONL 扫描 | 读取本地 Gemini usage 文件 |
+| **GitHub Copilot CLI** | OTEL JSONL | 读取 Copilot telemetry exporter 输出 |
+| **Goose** | SQLite 扫描 | 读取 Goose `sessions.db` |
+| **Codebuff** | JSON 扫描 | 读取 channel 内 `chat-messages.json` |
+| **Hermes / Kilo** | SQLite 扫描 | 读取各自本地状态库 |
+| **Kimi / OpenClaw / pi-agent / Qwen** | JSONL 扫描 | 读取本地 session transcript |
+| **Droid** | JSON + JSONL 扫描 | sidecar JSONL 可补齐缺失 model |
 
 ## 安装
 
@@ -96,11 +119,15 @@ make install
 ## 快速开始
 
 ```bash
-tm setup             # 首次运行：注册 Claude hooks
-tm daemon &          # 后台 collector
-tm daily             # 今天所有来源的汇总
-tm blocks --active   # 当前 5 小时窗口的实时情况
-tm web               # 浏览器 dashboard（独立进程）
+tm setup                                           # 首次运行：注册 Claude hooks
+tm daily --compact                                 # 今天所有来源的紧凑汇总
+tm pricing refresh --offline                       # 查看/刷新 LiteLLM 定价缓存；离线时用 fallback
+tm config show                                     # 查看统一配置和 legacy merge 结果
+tm config init                                     # 初始化 ~/.tokenmeter/config.json
+tm blocks --token-limit 100000                     # 当前 5 小时窗口 + token 阈值进度
+tm daily --instances --project-aliases '{"core":["/Users/admin/code/core"]}'
+tm analyze --tool-errors                           # 工具失败模式分析
+tm web                                             # 浏览器 dashboard（独立进程）
 ```
 
 正常使用 Claude Code 或 Codex，TokenMeter 在后台自动采集所有数据。完整命令对照参见 [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md)。
@@ -116,10 +143,12 @@ Copilot CLI、Goose、Codebuff、Hermes、Kilo、Kimi、OpenClaw、pi-agent、Dr
 |------|------|
 | `tm` | 默认等同于 `tm daily`，显示每日 Token / 费用汇总 |
 | `tm daemon` | 仅启动 daemon |
-| `tm daily` / `tm weekly` / `tm monthly` | 按日 / 周 / 月汇总所有来源 |
+| `tm daily --compact` / `tm weekly` / `tm monthly` | 按日 / 周 / 月汇总所有来源，支持窄终端 compact 表格 |
+| `tm daily --instances --project-aliases JSON` | 展开项目实例，并用 alias 归一化工作区路径 |
 | `tm session [id]` | 按 session 展示明细，可传 id 过滤 |
-| `tm blocks [--active]` | 5 小时窗口、burn rate 和 projection |
-| `tm statusline` | Claude Code statusline provider |
+| `tm blocks [--active] [--token-limit N\|max]` | 5 小时窗口、burn rate、projection 和 token 阈值进度 |
+| `tm statusline` | Claude Code statusline provider，支持 context 阈值和 burn-rate 展示 |
+| `tm analyze --tool-errors` | 汇总工具失败模式、错误片段和高风险会话 |
 | `tm watch [opts]` | 从 daemon socket 流式输出事件 |
 | `tm share [session]` | 生成可分享的 Markdown 会话战报 |
 | `tm export [opts]` | CSV / JSON 导出 |
@@ -128,6 +157,8 @@ Copilot CLI、Goose、Codebuff、Hermes、Kilo、Kimi、OpenClaw、pi-agent、Dr
 | `tm tag <id> [text]` | 给会话打标签（省略 text 则清除） |
 | `tm budget <subcommand>` | 管理预算 |
 | `tm webhook <subcommand>` | 管理 webhook endpoint |
+| `tm config <show\|path\|init>` | 查看、定位或初始化统一配置 |
+| `tm pricing refresh [--offline]` | 刷新 LiteLLM 运行期定价缓存 |
 | `tm setup` | 配置 Claude Code hooks |
 | `tm uninstall` | 卸载 hooks 并停止 daemon |
 | `tm version` | 显示版本 |

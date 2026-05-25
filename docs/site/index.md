@@ -22,6 +22,8 @@ features:
     details: The embedded web app provides charts, session detail, search, budgets, and export paths without a hosted service.
   - title: Budget alerts
     details: Monthly budgets, webhook events, and statusline quota hints help catch high-cost sessions before they surprise you.
+  - title: Tool error analysis
+    details: tm analyze --tool-errors groups failing tools, recurring error fragments, and high-risk sessions beyond ccusage-style usage reports.
 ---
 
 # Overview
@@ -46,15 +48,36 @@ Use the report commands when you want scriptable output.
 
 ```bash
 tm setup
-tm daily
+tm daily --compact
+tm pricing refresh --offline
+tm config show
+tm analyze --tool-errors
 tm web
 ```
 
 `tm setup` writes Claude Code hooks into `~/.claude/settings.json`.
 
-`tm daily` scans installed sources and prints the daily token and cost summary.
+`tm daily --compact` scans installed sources and prints the daily token and cost summary in a narrow-terminal friendly layout.
+
+`tm pricing refresh --offline` verifies the LiteLLM pricing cache path and uses local fallback data when networking is unavailable.
+
+`tm config show` prints the unified config model and legacy merge result.
+
+`tm analyze --tool-errors` highlights repeated tool failures and error patterns.
 
 `tm web` starts the browser dashboard, usually on port `8370`.
+
+## What's New in v1.2
+
+- OpenCode now reads modern SQLite installs through `opencode.db`, with JSON compatibility retained.
+- Droid reports can recover missing model names from sidecar JSONL transcripts.
+- LiteLLM runtime pricing sync keeps model pricing current while preserving an offline fallback path.
+- Codex reports support `--speed auto|standard|fast`, with `auto` reading `~/.codex/config.toml`.
+- Responsive CLI tables and `--compact` improve daily, weekly, monthly, and session reports in narrow terminals.
+- `tm blocks --token-limit 100000` adds token-limit progress and status context to 5-hour billing windows.
+- `tm config show`, `tm config path`, and `tm config init` expose the unified `~/.tokenmeter/config.json` entry point.
+- `tm daily --instances --project-aliases ...` can normalize multiple workspace paths into project aliases.
+- `tm analyze --tool-errors` adds tool failure pattern analysis, a TokenMeter-specific diagnostic view beyond ccusage.
 
 ## What To Read First
 

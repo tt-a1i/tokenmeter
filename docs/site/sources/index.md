@@ -4,6 +4,8 @@ TokenMeter can report usage from the daemon-backed SQLite database and from batc
 
 Claude Code and Codex are the primary real-time sources.
 
+The supported-source matrix matches the README front page.
+
 The other sources are scanned when report commands run.
 
 `tm daily` scans all installed supported sources by default.
@@ -11,6 +13,8 @@ The other sources are scanned when report commands run.
 Use `--no-scan` to restrict reports to the TokenMeter SQLite database.
 
 Use source-specific commands when debugging one adapter.
+
+OpenCode support includes modern SQLite installs through `opencode.db`, plus the older JSON file layout.
 
 Example:
 

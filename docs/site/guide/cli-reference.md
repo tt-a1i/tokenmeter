@@ -18,10 +18,12 @@ Some commands manage local configuration files.
 | --- | --- |
 | `tm` | Default daily token and cost summary. |
 | `tm daily` | Daily token and cost buckets. |
+| `tm daily --compact` | Daily summary with compact columns for narrow terminals. |
+| `tm daily --instances --project-aliases JSON` | Expand project instances and normalize workspace paths under aliases. |
 | `tm weekly` | ISO-week token and cost buckets. |
 | `tm monthly` | Monthly token and cost buckets. |
 | `tm session [id]` | Per-session breakdown, optionally filtered by id prefix. |
-| `tm blocks [--active]` | Five-hour session blocks with burn rate and projection. |
+| `tm blocks [--active] [--token-limit N\|max]` | Five-hour session blocks with burn rate, projection, and token-limit progress. |
 | `tm statusline` | Claude Code statusline provider; reads stdin JSON and writes one line. |
 | `tm share [session]` | Markdown session recap for sharing or handoff. |
 
@@ -38,6 +40,7 @@ Some commands manage local configuration files.
 | Command | Purpose |
 | --- | --- |
 | `tm analyze` | Usage insights and activity analysis. |
+| `tm analyze --tool-errors` | Tool failure pattern analysis grouped by tool, error fragment, and session. |
 | `tm search <query>` | Search tool calls and file paths. |
 | `tm compare <a> <b>` | Compare two sessions. |
 | `tm export [opts]` | CSV or JSON export. |
@@ -52,6 +55,7 @@ Some commands manage local configuration files.
 | `tm backup [path]` | Snapshot the database. |
 | `tm restore <path>` | Restore from a snapshot. |
 | `tm reload` | Ask the daemon to reload configuration. |
+| `tm pricing refresh [--offline]` | Refresh the LiteLLM runtime pricing cache, or use fallback-only mode when offline. |
 | `tm logs [--follow]` | Print daemon or hook logs. |
 | `tm healthcheck [--json]` | Check database and daemon liveness. |
 | `tm emit` | Hook-facing event receiver; normally not run manually. |
@@ -68,7 +72,6 @@ Some commands manage local configuration files.
 | `tm version [--check]` | Print version and optionally check for updates. |
 | `tm tag <id> [text]` | Set or clear a session note. |
 | `tm config <show\|path\|init>` | Show, locate, or initialize unified config. |
-| `tm pricing refresh` | Refresh the LiteLLM runtime pricing cache. |
 | `tm budget <subcommand>` | Manage monthly budgets. |
 | `tm webhook <subcommand>` | Manage webhook endpoints. |
 
@@ -103,6 +106,8 @@ tm gemini session --json
 | `--offline` | Skip online pricing refresh. |
 | `--timezone ZONE` | Date bucketing timezone. |
 | `--project PATH` | Filter by workspace path. |
+| `--instances` | Show project instances instead of only canonical project names. |
+| `--project-aliases JSON\|PATH` | Normalize workspace paths with inline JSON or a JSON file. |
 | `--no-color` | Disable color. |
 | `--compact` | Use compact table layout. |
 | `--jq EXPR` | Post-filter JSON through jq. |
