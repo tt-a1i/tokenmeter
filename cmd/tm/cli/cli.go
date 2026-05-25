@@ -21,11 +21,13 @@ type Shared struct {
 	Project                string
 	NoColor                bool
 	Compact                bool
+	Instances              bool
 	JQ                     string
 	Config                 string
 	ContextLowThreshold    int
 	ContextMediumThreshold int
 	BurnRateDisplay        string
+	ProjectAliases         string
 	TokenLimit             string
 	SessionLength          time.Duration
 	Active                 bool
@@ -50,11 +52,13 @@ func ParseShared(args []string) (Shared, []string, error) {
 	fs.StringVar(&s.Project, "project", "", "filter by workspace path")
 	fs.BoolVar(&s.NoColor, "no-color", false, "disable color")
 	fs.BoolVar(&s.Compact, "compact", false, "use compact table layout")
+	fs.BoolVar(&s.Instances, "instances", false, "show project instances")
 	fs.StringVar(&s.JQ, "jq", "", "post-filter JSON via jq expression")
 	fs.StringVar(&s.Config, "config", "", "config file path")
 	fs.IntVar(&s.ContextLowThreshold, "context-low-threshold", 0, "statusline context warning threshold percent")
 	fs.IntVar(&s.ContextMediumThreshold, "context-medium-threshold", 0, "statusline context danger threshold percent")
 	fs.StringVar(&s.BurnRateDisplay, "burn-rate-display", "", "statusline burn-rate display: off | emoji | text | emoji-text")
+	fs.StringVar(&s.ProjectAliases, "project-aliases", "", "project alias JSON or JSON file path")
 	fs.StringVar(&s.TokenLimit, "token-limit", "", "blocks token limit: positive integer or max")
 	var sessionLengthStr string
 	fs.StringVar(&sessionLengthStr, "session-length", "5h", "duration of one session block (e.g. 5h, 1h30m)")

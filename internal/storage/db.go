@@ -974,6 +974,7 @@ type TokenUsageEntry struct {
 	SourceID                 string
 	SessionID                string
 	AgentID                  string
+	CWD                      string
 	Timestamp                time.Time
 	Model                    string
 	InputTokens              int64
@@ -993,7 +994,7 @@ func (s *DB) ListUsageForBlocks(ctx context.Context, since, until time.Time) ([]
 // ListUsageForBlocksFiltered returns token_usage rows joined to sessions and
 // filtered by workspace cwd (exact match). Empty workspace skips the filter.
 func (s *DB) ListUsageForBlocksFiltered(ctx context.Context, since, until time.Time, workspace string) ([]TokenUsageEntry, error) {
-	q := `SELECT u.source_id, u.session_id, u.agent_id, u.timestamp, u.model,
+	q := `SELECT u.source_id, u.session_id, u.agent_id, s.cwd, u.timestamp, u.model,
 	             u.input_tokens, u.output_tokens, u.cache_creation_tokens,
 	             u.cache_read_tokens, u.cost_usd
 	      FROM token_usage u
@@ -1037,7 +1038,7 @@ func (s *DB) scanUsageRows(ctx context.Context, q string, args []any) ([]TokenUs
 			cacheCre sql.NullInt64
 			cacheRd  sql.NullInt64
 		)
-		if err := rows.Scan(&e.SourceID, &e.SessionID, &agentID, &tsRaw, &model,
+		if err := rows.Scan(&e.SourceID, &e.SessionID, &agentID, &e.CWD, &tsRaw, &model,
 			&e.InputTokens, &e.OutputTokens, &cacheCre, &cacheRd, &e.CostUSD); err != nil {
 			return nil, fmt.Errorf("scan usage row: %w", err)
 		}

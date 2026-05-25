@@ -196,6 +196,75 @@ func TestRunAggregateModeAutoFallsBackOnZero(t *testing.T) {
 	}
 }
 
+func TestParseSharedProjectAliasFlags(t *testing.T) {
+	got, rest, err := cli.ParseShared([]string{"daily", "--instances", "--project-aliases", `{"agmon":["/repo/a"]}`})
+	if err != nil {
+		t.Fatalf("ParseShared: %v", err)
+	}
+	if !got.Instances {
+		t.Fatal("--instances must be true")
+	}
+	if got.ProjectAliases == "" {
+		t.Fatal("--project-aliases must be captured")
+	}
+	if len(rest) != 1 || rest[0] != "daily" {
+		t.Fatalf("rest=%v want [daily]", rest)
+	}
+}
+
+func TestRunAggregateProjectAliasesMergeCWDs(t *testing.T) {
+	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
+		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"), CWD: "/repo/agmon", Model: "claude", InputTokens: 100, CostUSD: 1.0},
+		{SessionID: "s2", Timestamp: mustTime("2026-05-19T11:00:00Z"), CWD: "/repo/agmon-feature", Model: "claude", InputTokens: 200, CostUSD: 2.0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+		Shared: cli.Shared{JSON: true, ProjectAliases: `{"agmon":["/repo/agmon","/repo/agmon-feature"]}`},
+		Bucket: cli.BucketDaily,
+	}, loader); err != nil {
+		t.Fatalf("RunAggregate: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"inputTokens": 300`) {
+		t.Fatalf("alias cwds should merge into one project row:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `"project": "agmon"`) {
+		t.Fatalf("JSON should include resolved project:\n%s", buf.String())
+	}
+}
+
+func TestRunAggregateInstancesShowsProjectColumn(t *testing.T) {
+	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{
+		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"), CWD: "/repo/agmon", Model: "claude", InputTokens: 100, CostUSD: 1.0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunAggregate(context.Background(), &buf, cli.AggregateArgs{
+		Shared: cli.Shared{Instances: true},
+		Bucket: cli.BucketDaily,
+	}, loader); err != nil {
+		t.Fatalf("RunAggregate: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "PROJECT") || !strings.Contains(out, "agmon") {
+		t.Fatalf("--instances should show PROJECT column:\n%s", out)
+	}
+}
+
+func TestRunSessionProjectAliasesNormalizeProjectPath(t *testing.T) {
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "s1", Project: "/repo/agmon-feature", Models: []string{"claude"}, InputTokens: 100},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf, cli.SessionArgs{
+		Shared: cli.Shared{ProjectAliases: `{"agmon":["/repo/agmon-feature"]}`},
+	}, loader); err != nil {
+		t.Fatalf("RunSession: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "agmon") || strings.Contains(out, "/repo/agmon-feature") {
+		t.Fatalf("session project path should be normalized by aliases:\n%s", out)
+	}
+}
+
 func TestParseDateFlagUntilClosedInterval(t *testing.T) {
 	got, err := cli.ParseDateFlagUntil("20260520")
 	if err != nil {

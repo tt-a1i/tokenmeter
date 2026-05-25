@@ -13,6 +13,7 @@ type aggregateJSONRow struct {
 	Date                string          `json:"date,omitempty"`
 	Week                string          `json:"week,omitempty"`
 	Month               string          `json:"month,omitempty"`
+	Project             string          `json:"project,omitempty"`
 	ModelsUsed          []string        `json:"modelsUsed"`
 	InputTokens         int64           `json:"inputTokens"`
 	OutputTokens        int64           `json:"outputTokens"`
@@ -39,6 +40,7 @@ type sessionJSONRow struct {
 
 type blockJSONRow struct {
 	Period              string               `json:"period"`
+	Project             string               `json:"project,omitempty"`
 	ModelsUsed          []string             `json:"modelsUsed"`
 	InputTokens         int64                `json:"inputTokens"`
 	OutputTokens        int64                `json:"outputTokens"`
@@ -84,6 +86,7 @@ func (defaultRenderer) renderAggregateJSON(w io.Writer, kind string, rows []Aggr
 	for _, r := range rows {
 		row := aggregateJSONRow{
 			ModelsUsed:          r.Models,
+			Project:             r.Project,
 			InputTokens:         r.InputTokens,
 			OutputTokens:        r.OutputTokens,
 			CacheCreationTokens: r.CacheCreateTokens,
@@ -169,6 +172,7 @@ func (defaultRenderer) renderBlocksJSON(w io.Writer, rows []BlockRow) error {
 	for _, r := range rows {
 		row := blockJSONRow{
 			Period:              r.Period,
+			Project:             r.Project,
 			ModelsUsed:          r.Models,
 			InputTokens:         r.InputTokens,
 			OutputTokens:        r.OutputTokens,

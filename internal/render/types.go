@@ -11,6 +11,7 @@ import (
 // AggregateRow is one row of daily/weekly/monthly output.
 type AggregateRow struct {
 	Bucket            string // "2026-05-19" / "2026-W21" / "2026-05"
+	Project           string
 	Models            []string
 	InputTokens       int64
 	OutputTokens      int64
@@ -51,6 +52,7 @@ type SessionRow struct {
 // BlockRow mirrors blocks.SessionBlock in render-layer-friendly form.
 type BlockRow struct {
 	Period            string // "2026-05-19 10:00"
+	Project           string
 	Models            []string
 	InputTokens       int64
 	OutputTokens      int64
@@ -79,6 +81,7 @@ type Options struct {
 	Breakdown bool
 	JSON      bool
 	Compact   bool
+	Instances bool
 }
 
 // Renderer is the entrypoint used by cli/* handlers.

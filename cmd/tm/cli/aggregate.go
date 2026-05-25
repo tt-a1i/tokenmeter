@@ -12,6 +12,7 @@ import (
 
 	"github.com/tt-a1i/tokenmeter/internal/collector"
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
+	"github.com/tt-a1i/tokenmeter/internal/projectalias"
 	"github.com/tt-a1i/tokenmeter/internal/render"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
@@ -81,6 +82,27 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 	}
 
 	mode := pricing.ParseMode(a.Shared.Mode)
+	if a.Shared.Instances || a.Shared.ProjectAliases != "" {
+		entries, err := loader.ListUsageForBlocksFiltered(ctx, since, until, a.Shared.Project)
+		if err != nil {
+			return err
+		}
+		entries = applyPricingMode(entries, mode)
+		aliases, err := projectalias.Load(a.Shared.ProjectAliases)
+		if err != nil {
+			return err
+		}
+		rows := aggregateEntriesByProject(entries, a.Bucket, loc, aliases)
+		if a.Shared.Order == "desc" {
+			sort.Slice(rows, func(i, j int) bool {
+				if rows[i].Bucket == rows[j].Bucket {
+					return rows[i].Project > rows[j].Project
+				}
+				return rows[i].Bucket > rows[j].Bucket
+			})
+		}
+		return render.New().RenderAggregate(w, bucketKind(a.Bucket), rows, renderOpts(a.Shared, w))
+	}
 	// When the user asked for ModeAuto without --breakdown, we still need
 	// per-model rows from storage so each (bucket, model) row can be
 	// inspected for the zero-cost fallback. Without this, a mixed-model
@@ -109,6 +131,66 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 	}
 
 	return render.New().RenderAggregate(w, bucketKind(a.Bucket), rows, renderOpts(a.Shared, w))
+}
+
+func aggregateEntriesByProject(entries []storage.TokenUsageEntry, bucket Bucket, loc *time.Location, aliases projectalias.Aliases) []render.AggregateRow {
+	type key struct {
+		bucket  string
+		project string
+	}
+	byKey := map[key]*render.AggregateRow{}
+	order := []key{}
+	for _, e := range entries {
+		project := resolveProjectName(aliases, e.CWD)
+		k := key{bucket: entryBucket(e.Timestamp, bucket, loc), project: project}
+		row, ok := byKey[k]
+		if !ok {
+			row = &render.AggregateRow{Bucket: k.bucket, Project: project}
+			byKey[k] = row
+			order = append(order, k)
+		}
+		row.Models = appendUnique(row.Models, e.Model)
+		row.InputTokens += e.InputTokens
+		row.OutputTokens += e.OutputTokens
+		row.CacheCreateTokens += e.CacheCreationInputTokens
+		row.CacheReadTokens += e.CacheReadInputTokens
+		row.TotalTokens = row.InputTokens + row.OutputTokens + row.CacheCreateTokens + row.CacheReadTokens
+		row.Cost += e.CostUSD
+	}
+	sort.Slice(order, func(i, j int) bool {
+		if order[i].bucket == order[j].bucket {
+			return order[i].project < order[j].project
+		}
+		return order[i].bucket < order[j].bucket
+	})
+	out := make([]render.AggregateRow, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byKey[k])
+	}
+	return out
+}
+
+func resolveProjectName(aliases projectalias.Aliases, cwd string) string {
+	if aliases != nil {
+		return aliases.Resolve(cwd)
+	}
+	return projectalias.Aliases{}.Resolve(cwd)
+}
+
+func entryBucket(ts time.Time, bucket Bucket, loc *time.Location) string {
+	if loc == nil {
+		loc = time.UTC
+	}
+	t := ts.In(loc)
+	switch bucket {
+	case BucketWeekly:
+		year, week := t.ISOWeek()
+		return fmt.Sprintf("%04d-W%02d", year, week)
+	case BucketMonthly:
+		return t.Format("2006-01")
+	default:
+		return t.Format("2006-01-02")
+	}
 }
 
 // cliBucketToStorage maps the cli Bucket enum to its storage counterpart.

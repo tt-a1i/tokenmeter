@@ -11,7 +11,9 @@ import (
 
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
+	"github.com/tt-a1i/tokenmeter/internal/projectalias"
 	"github.com/tt-a1i/tokenmeter/internal/render"
+	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
 
 // BlocksArgs is the resolved input to RunBlocks.
@@ -48,6 +50,14 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	}
 	entries = applyPricingMode(entries, pricing.ParseMode(args.Shared.Mode))
 	all := blocks.Annotate(blocks.Identify(entries, args.SessionLength, args.Now), args.Now)
+	blockProjects := map[time.Time]string{}
+	if args.Shared.Instances || args.Shared.ProjectAliases != "" {
+		aliases, err := projectalias.Load(args.Shared.ProjectAliases)
+		if err != nil {
+			return err
+		}
+		blockProjects = projectByBlock(all, entries, aliases)
+	}
 	if args.Shared.Breakdown {
 		all = blocks.PopulatePerModel(all, entries)
 	}
@@ -64,6 +74,7 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 		b := annotated.Block
 		row := render.BlockRow{
 			Period:            b.StartTime.Format("2006-01-02 15:04"),
+			Project:           blockProjects[b.StartTime],
 			Models:            b.Models,
 			InputTokens:       b.Tokens.Input,
 			OutputTokens:      b.Tokens.Output,
@@ -115,6 +126,23 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 		rows = append(rows, row)
 	}
 	return render.New().RenderBlocks(out, rows, renderOpts(args.Shared, out))
+}
+
+func projectByBlock(all []blocks.SessionBlock, entries []storage.TokenUsageEntry, aliases projectalias.Aliases) map[time.Time]string {
+	out := map[time.Time]string{}
+	for _, b := range all {
+		if b.IsGap {
+			continue
+		}
+		for _, e := range entries {
+			if e.Timestamp.Before(b.StartTime) || !e.Timestamp.Before(b.EndTime) {
+				continue
+			}
+			out[b.StartTime] = resolveProjectName(aliases, e.CWD)
+			break
+		}
+	}
+	return out
 }
 
 func resolveTokenLimit(raw string, all []blocks.SessionBlock) (int64, error) {

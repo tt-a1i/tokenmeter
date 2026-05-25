@@ -235,3 +235,20 @@ func TestRunBlocksJSONIncludesTokenLimitFields(t *testing.T) {
 		t.Fatalf("token-limit JSON mismatch: %+v", got.Blocks[0])
 	}
 }
+
+func TestRunBlocksInstancesJSONIncludesProject(t *testing.T) {
+	loader := stubLoader{items: []storage.TokenUsageEntry{
+		{SessionID: "s", Timestamp: mustTime("2026-05-19T10:00:00Z"), CWD: "/repo/agmon", Model: "claude", InputTokens: 80, CostUSD: 1.0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunBlocks(context.Background(), &buf, cli.BlocksArgs{
+		Shared:        cli.Shared{JSON: true, Instances: true},
+		SessionLength: 5 * time.Hour,
+		Now:           mustTime("2026-05-20T12:00:00Z"),
+	}, loader); err != nil {
+		t.Fatalf("RunBlocks: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"project": "agmon"`) {
+		t.Fatalf("blocks JSON should include project when --instances is enabled:\n%s", buf.String())
+	}
+}

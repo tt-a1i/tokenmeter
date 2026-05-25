@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
+	"github.com/tt-a1i/tokenmeter/internal/projectalias"
 	"github.com/tt-a1i/tokenmeter/internal/render"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
@@ -26,6 +27,7 @@ func renderOpts(s Shared, w io.Writer) render.Options {
 		Breakdown: s.Breakdown,
 		Color:     render.Resolve(s.JSON, s.NoColor, w),
 		Compact:   s.Compact,
+		Instances: s.Instances,
 	}
 }
 
@@ -78,6 +80,15 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 	}
 
 	rows := convertSessionRows(aggRows, a.Shared.Breakdown, mode, a.SessionID, needAutoFallback)
+	if a.Shared.ProjectAliases != "" {
+		aliases, err := projectalias.Load(a.Shared.ProjectAliases)
+		if err != nil {
+			return err
+		}
+		for i := range rows {
+			rows[i].ProjectPath = aliases.Resolve(rows[i].ProjectPath)
+		}
+	}
 
 	if a.Shared.Order == "desc" {
 		sort.Slice(rows, func(i, j int) bool { return rows[i].SessionID > rows[j].SessionID })

@@ -33,8 +33,13 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 	case "monthly":
 		firstCol = "Month"
 	}
-	if compact {
+	withProjects := opts.Instances && aggregateHasProjects(rows)
+	if compact && withProjects {
+		t.AppendHeader(table.Row{firstCol, "Project", "Input", "Output", "Cache", "Total", "Cost"})
+	} else if compact {
 		t.AppendHeader(table.Row{firstCol, "Input", "Output", "Cache", "Total", "Cost"})
+	} else if withProjects {
+		t.AppendHeader(table.Row{firstCol, "Project", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost"})
 	} else {
 		t.AppendHeader(table.Row{firstCol, "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost"})
 	}
@@ -49,12 +54,34 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 	var sumIn, sumOut, sumCC, sumCR, sumTotal int64
 	var sumCost float64
 	for _, r := range rows {
-		if compact {
+		if compact && withProjects {
+			t.AppendRow(table.Row{
+				r.Bucket,
+				r.Project,
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+			})
+		} else if compact {
 			t.AppendRow(table.Row{
 				r.Bucket,
 				colorize(text.FgYellow, fmtInt(r.InputTokens)),
 				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
 				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+			})
+		} else if withProjects {
+			t.AppendRow(table.Row{
+				r.Bucket,
+				r.Project,
+				colorize(text.FgCyan, joinList(r.Models)),
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
 				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
 				colorize(text.FgRed, fmtCost(r.Cost)),
 			})
@@ -72,11 +99,25 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 		}
 		if opts.Breakdown {
 			for _, b := range r.Breakdown {
-				if compact {
+				if compact && withProjects {
+					t.AppendRow(table.Row{
+						"└─ " + b.Model, "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost),
+					})
+				} else if compact {
 					t.AppendRow(table.Row{
 						"└─ " + b.Model,
 						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
 						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost),
+					})
+				} else if withProjects {
+					t.AppendRow(table.Row{
+						"└─ " + b.Model, "", "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
 						fmtInt(b.TotalTokens), fmtCost(b.Cost),
 					})
 				} else {
@@ -97,11 +138,25 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 		sumCost += r.Cost
 	}
 	t.AppendSeparator()
-	if compact {
+	if compact && withProjects {
+		t.AppendFooter(table.Row{
+			"TOTAL", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC + sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+		})
+	} else if compact {
 		t.AppendFooter(table.Row{
 			"TOTAL",
 			fmtInt(sumIn), fmtInt(sumOut),
 			fmtInt(sumCC + sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+		})
+	} else if withProjects {
+		t.AppendFooter(table.Row{
+			"TOTAL", "", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC), fmtInt(sumCR),
 			fmtInt(sumTotal), fmtCost(sumCost),
 		})
 	} else {
@@ -114,6 +169,15 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 	}
 	t.Render()
 	return nil
+}
+
+func aggregateHasProjects(rows []AggregateRow) bool {
+	for _, r := range rows {
+		if r.Project != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // RenderSessions emits a rounded-box table keyed by session id with project
@@ -242,16 +306,25 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 	t.SetStyle(table.StyleRounded)
 	compact := compactLayout(w, opts)
 	withLimit := blocksHaveTokenLimit(rows)
+	withProjects := opts.Instances && blockHasProjects(rows)
 	progressWidth := 12
 	if compact {
 		progressWidth = 8
 	}
-	if compact && withLimit {
+	if compact && withLimit && withProjects {
+		t.AppendHeader(table.Row{"Period", "Project", "Input", "Output", "Cache", "Total", "Cost", "Usage%", "Progress", "Status"})
+	} else if compact && withLimit {
 		t.AppendHeader(table.Row{"Period", "Input", "Output", "Cache", "Total", "Cost", "Usage%", "Progress", "Status"})
+	} else if compact && withProjects {
+		t.AppendHeader(table.Row{"Period", "Project", "Input", "Output", "Cache", "Total", "Cost", "Status"})
 	} else if compact {
 		t.AppendHeader(table.Row{"Period", "Input", "Output", "Cache", "Total", "Cost", "Status"})
+	} else if withLimit && withProjects {
+		t.AppendHeader(table.Row{"Period", "Project", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Usage%", "Progress", "Status"})
 	} else if withLimit {
 		t.AppendHeader(table.Row{"Period", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Usage%", "Progress", "Status"})
+	} else if withProjects {
+		t.AppendHeader(table.Row{"Period", "Project", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Status"})
 	} else {
 		t.AppendHeader(table.Row{"Period", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Status"})
 	}
@@ -300,7 +373,20 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 		if withLimit && r.TokenLimit > 0 {
 			status = colorizeLimitStatus(r.TokenLimitStatus)
 		}
-		if compact && withLimit {
+		if compact && withLimit && withProjects {
+			t.AppendRow(table.Row{
+				r.Period,
+				r.Project,
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+				formatUsagePct(r),
+				progressBar(r.UsagePct, progressWidth),
+				status,
+			})
+		} else if compact && withLimit {
 			t.AppendRow(table.Row{
 				r.Period,
 				colorize(text.FgYellow, fmtInt(r.InputTokens)),
@@ -312,6 +398,17 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 				progressBar(r.UsagePct, progressWidth),
 				status,
 			})
+		} else if compact && withProjects {
+			t.AppendRow(table.Row{
+				r.Period,
+				r.Project,
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+				status,
+			})
 		} else if compact {
 			t.AppendRow(table.Row{
 				r.Period,
@@ -320,6 +417,21 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
 				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
 				colorize(text.FgRed, fmtCost(r.Cost)),
+				status,
+			})
+		} else if withLimit && withProjects {
+			t.AppendRow(table.Row{
+				r.Period,
+				r.Project,
+				colorize(text.FgCyan, joinList(r.Models)),
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+				formatUsagePct(r),
+				progressBar(r.UsagePct, progressWidth),
 				status,
 			})
 		} else if withLimit {
@@ -334,6 +446,19 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 				colorize(text.FgRed, fmtCost(r.Cost)),
 				formatUsagePct(r),
 				progressBar(r.UsagePct, progressWidth),
+				status,
+			})
+		} else if withProjects {
+			t.AppendRow(table.Row{
+				r.Period,
+				r.Project,
+				colorize(text.FgCyan, joinList(r.Models)),
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
 				status,
 			})
 		} else {
@@ -351,12 +476,26 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 		}
 		if opts.Breakdown {
 			for _, b := range r.Breakdown {
-				if compact && withLimit {
+				if compact && withLimit && withProjects {
+					t.AppendRow(table.Row{
+						"  └─ " + b.Model, "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost), "", "", "",
+					})
+				} else if compact && withLimit {
 					t.AppendRow(table.Row{
 						"  └─ " + b.Model,
 						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
 						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
 						fmtInt(b.TotalTokens), fmtCost(b.Cost), "", "", "",
+					})
+				} else if compact && withProjects {
+					t.AppendRow(table.Row{
+						"  └─ " + b.Model, "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost), "",
 					})
 				} else if compact {
 					t.AppendRow(table.Row{
@@ -365,12 +504,26 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
 						fmtInt(b.TotalTokens), fmtCost(b.Cost), "",
 					})
+				} else if withLimit && withProjects {
+					t.AppendRow(table.Row{
+						"  └─ " + b.Model, "", "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost), "", "", "",
+					})
 				} else if withLimit {
 					t.AppendRow(table.Row{
 						"  └─ " + b.Model, "",
 						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
 						fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
 						fmtInt(b.TotalTokens), fmtCost(b.Cost), "", "", "",
+					})
+				} else if withProjects {
+					t.AppendRow(table.Row{
+						"  └─ " + b.Model, "", "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost), "",
 					})
 				} else {
 					t.AppendRow(table.Row{
@@ -390,13 +543,29 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 		sumCost += r.Cost
 	}
 	t.AppendSeparator()
-	if compact && withLimit {
+	if compact && withLimit && withProjects {
+		t.AppendFooter(table.Row{
+			"TOTAL", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC + sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+			"", "", "",
+		})
+	} else if compact && withLimit {
 		t.AppendFooter(table.Row{
 			"TOTAL",
 			fmtInt(sumIn), fmtInt(sumOut),
 			fmtInt(sumCC + sumCR),
 			fmtInt(sumTotal), fmtCost(sumCost),
 			"", "", "",
+		})
+	} else if compact && withProjects {
+		t.AppendFooter(table.Row{
+			"TOTAL", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC + sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+			"",
 		})
 	} else if compact {
 		t.AppendFooter(table.Row{
@@ -406,6 +575,14 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 			fmtInt(sumTotal), fmtCost(sumCost),
 			"",
 		})
+	} else if withLimit && withProjects {
+		t.AppendFooter(table.Row{
+			"TOTAL", "", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC), fmtInt(sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+			"", "", "",
+		})
 	} else if withLimit {
 		t.AppendFooter(table.Row{
 			"TOTAL", "",
@@ -413,6 +590,14 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 			fmtInt(sumCC), fmtInt(sumCR),
 			fmtInt(sumTotal), fmtCost(sumCost),
 			"", "", "",
+		})
+	} else if withProjects {
+		t.AppendFooter(table.Row{
+			"TOTAL", "", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC), fmtInt(sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+			"",
 		})
 	} else {
 		t.AppendFooter(table.Row{
@@ -430,6 +615,15 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 func blocksHaveTokenLimit(rows []BlockRow) bool {
 	for _, r := range rows {
 		if r.TokenLimit > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func blockHasProjects(rows []BlockRow) bool {
+	for _, r := range rows {
+		if r.Project != "" {
 			return true
 		}
 	}
