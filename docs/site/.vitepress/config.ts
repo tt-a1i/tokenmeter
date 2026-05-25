@@ -29,6 +29,10 @@ export default defineConfig({
           { text: 'CLI Reference', link: '/guide/cli-reference' },
           { text: 'JSON Output', link: '/guide/json-output' },
           { text: 'Blocks and Statusline', link: '/guide/blocks-and-statusline' },
+          { text: 'Tool Error Analysis', link: '/guide/tool-error-analysis' },
+          { text: 'File Churn', link: '/guide/file-churn' },
+          { text: 'Search Query DSL', link: '/guide/search-query-dsl' },
+          { text: 'Webhook Anomaly Detection', link: '/guide/webhook-anomaly-detection' },
           { text: 'Migrating to v1', link: '/guide/migration-v1' }
         ]
       },
