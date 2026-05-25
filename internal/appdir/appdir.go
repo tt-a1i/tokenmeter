@@ -6,6 +6,7 @@ import (
 )
 
 const (
+	EnvHome    = "TOKENMETER_HOME"
 	CurrentDir = ".tokenmeter"
 	LegacyDir  = ".agmon"
 )
@@ -13,6 +14,9 @@ const (
 // Base returns the app data directory. Existing agmon installs keep using the
 // legacy directory until a new TokenMeter directory is created.
 func Base() string {
+	if root := os.Getenv(EnvHome); root != "" {
+		return root
+	}
 	home, _ := os.UserHomeDir()
 	current := filepath.Join(home, CurrentDir)
 	if exists(current) {
@@ -43,6 +47,9 @@ func PathFor(currentName, legacyName string, dirs ...string) string {
 }
 
 func UsingLegacy() bool {
+	if os.Getenv(EnvHome) != "" {
+		return false
+	}
 	home, _ := os.UserHomeDir()
 	current := filepath.Join(home, CurrentDir)
 	if exists(current) {

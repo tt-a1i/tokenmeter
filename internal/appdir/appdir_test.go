@@ -12,6 +12,7 @@ func setHome(t *testing.T, home string) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOMEDRIVE", "")
 	t.Setenv("HOMEPATH", "")
+	t.Setenv("TOKENMETER_HOME", "")
 }
 
 func TestBaseUsesCurrentDirForNewInstalls(t *testing.T) {
@@ -58,5 +59,27 @@ func TestBasePrefersCurrentDirOverLegacyDir(t *testing.T) {
 
 	if got := Base(); got != current {
 		t.Fatalf("Base() = %q, want %q", got, current)
+	}
+}
+
+func TestRoot_HonorsTokenmeterHomeEnv(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	override := filepath.Join(t.TempDir(), "tm-home")
+	t.Setenv("TOKENMETER_HOME", override)
+	if err := os.MkdirAll(filepath.Join(home, LegacyDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := Base(); got != override {
+		t.Fatalf("Base() = %q, want %q", got, override)
+	}
+	if UsingLegacy() {
+		t.Fatal("UsingLegacy() = true with TOKENMETER_HOME override, want false")
+	}
+	gotPath := PathFor("tokenmeter.db", "agmon.db", "data")
+	wantPath := filepath.Join(override, "data", "tokenmeter.db")
+	if gotPath != wantPath {
+		t.Fatalf("PathFor() = %q, want %q", gotPath, wantPath)
 	}
 }

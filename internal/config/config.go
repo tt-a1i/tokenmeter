@@ -153,8 +153,7 @@ func Save(c *Config, path string) error {
 }
 
 func GlobalPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, appdir.CurrentDir, "config.json")
+	return appdir.Path("config.json")
 }
 
 func EffectivePath(explicit string) string {
@@ -194,7 +193,7 @@ func Example() *Config {
 		},
 		Webhooks: WebhookConfig{
 			AnomalyCooldown: AnomalyCooldownConfig{
-				CostSpikeHours:          24,
+				CostSpikeHours:         24,
 				UsageRegressionMinutes: 60,
 			},
 			Endpoints: []EndpointConfig{},

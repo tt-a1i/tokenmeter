@@ -14,6 +14,7 @@ func TestPathJoinsElems(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOMEDRIVE", "")
 	t.Setenv("HOMEPATH", "")
+	t.Setenv("TOKENMETER_HOME", "")
 
 	// Single element
 	got := Path("data.db")
