@@ -83,3 +83,39 @@ func TestCmdHelpCoversTopLevelHelpCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestHelp_DailyMentionsCompact(t *testing.T) {
+	assertCmdHelpMentions(t, "daily", "--compact")
+}
+
+func TestHelp_WeeklyMentionsCompact(t *testing.T) {
+	assertCmdHelpMentions(t, "weekly", "--compact")
+}
+
+func TestHelp_MonthlyMentionsCompact(t *testing.T) {
+	assertCmdHelpMentions(t, "monthly", "--compact")
+}
+
+func TestHelp_SessionMentionsCompact(t *testing.T) {
+	assertCmdHelpMentions(t, "session", "--compact")
+}
+
+func TestHelp_BlocksMentionsTokenLimit(t *testing.T) {
+	assertCmdHelpMentions(t, "blocks", "--token-limit")
+}
+
+func TestHelp_StatuslineMentionsBurnRateDisplay(t *testing.T) {
+	assertCmdHelpMentions(t, "statusline", "--burn-rate-display")
+}
+
+func assertCmdHelpMentions(t *testing.T, command, want string) {
+	t.Helper()
+	out := captureStdout(t, func() {
+		if err := printCmdHelp(command); err != nil {
+			t.Fatalf("printCmdHelp(%q): %v", command, err)
+		}
+	})
+	if !strings.Contains(out, want) {
+		t.Fatalf("tm %s --help missing %q:\n%s", command, want, out)
+	}
+}

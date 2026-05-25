@@ -67,6 +67,7 @@ Some commands manage local configuration files.
 | `tm update` | Download and install the latest release. |
 | `tm version [--check]` | Print version and optionally check for updates. |
 | `tm tag <id> [text]` | Set or clear a session note. |
+| `tm config <show\|path\|init>` | Show, locate, or initialize unified config. |
 | `tm pricing refresh` | Refresh the LiteLLM runtime pricing cache. |
 | `tm budget <subcommand>` | Manage monthly budgets. |
 | `tm webhook <subcommand>` | Manage webhook endpoints. |
@@ -103,10 +104,15 @@ tm gemini session --json
 | `--timezone ZONE` | Date bucketing timezone. |
 | `--project PATH` | Filter by workspace path. |
 | `--no-color` | Disable color. |
+| `--compact` | Use compact table layout. |
 | `--jq EXPR` | Post-filter JSON through jq. |
 | `--config PATH` | Config file path placeholder for commands that support it. |
 | `--session-length 5h` | Session block duration. |
 | `--active` | Blocks: show only active window. |
+| `--token-limit N\|max` | Blocks: annotate usage against a token limit. |
+| `--context-low-threshold PCT` | Statusline: context warning threshold percent. |
+| `--context-medium-threshold PCT` | Statusline: context danger threshold percent. |
+| `--burn-rate-display MODE` | Statusline: burn-rate display, one of `off`, `emoji`, `text`, `emoji-text`. |
 | `--no-scan` | Skip batch adapter scans and use only SQLite. |
 
 ## Deprecated Aliases

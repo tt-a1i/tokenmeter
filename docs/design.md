@@ -1,8 +1,10 @@
 # TokenMeter - AI Agent Usage Meter
 
+> ⚠️ **Historical design (v0.x)**. This document describes the now-removed Bubbletea TUI; current architecture is CLI-first with Web Dashboard. See [docs/site/guide/migration-v1.md](site/guide/migration-v1.md).
+
 ## Overview
 
-Real-time observability for AI coding agents. TUI-based monitor that shows what your agents are doing, how much they cost, and where they fail.
+Real-time observability for AI coding agents. Historical v0.x TUI-based monitor that showed what your agents were doing, how much they cost, and where they failed.
 
 **Supported platforms:** Claude Code, Codex (v1)
 
@@ -13,14 +15,14 @@ Claude Code hooks ──→ Unix socket ──→ tm daemon (aggregate/store)
 Codex logs ─────────→                        ↓
                                       ~/.tokenmeter/data/tokenmeter.db (SQLite)
                                              ↓
-                                      tm tui (connect to daemon)
+                                      tm tui (historical v0.x, removed)
 ```
 
 ### Components
 
 1. **tm emit** — lightweight CLI called by hooks, sends events to daemon via Unix socket
 2. **tm daemon** — receives events, parses logs, aggregates data, stores to SQLite
-3. **tm tui** — connects to daemon, renders real-time TUI
+3. **tm tui** — historical v0.x command, removed; connected to daemon and rendered the real-time TUI
 
 ### Communication
 
@@ -54,7 +56,7 @@ SQLite database at `~/.tokenmeter/data/tokenmeter.db` (using modernc.org/sqlite,
 - **token_usage** — agent_id, input_tokens, output_tokens, model, timestamp
 - **file_changes** — session_id, file_path, change_type, timestamp
 
-## TUI Views
+## Historical v0.x TUI Views
 
 4 views, Tab to switch:
 
@@ -85,7 +87,7 @@ SQLite database at `~/.tokenmeter/data/tokenmeter.db` (using modernc.org/sqlite,
 ## CLI Commands
 
 ```
-tm                    # start TUI (auto-starts daemon)
+tm                    # historical v0.x: start TUI (removed; current tm runs daily)
 tm daemon             # start daemon only
 tm status             # quick summary of active sessions
 tm report [session]   # text report for a session
@@ -107,7 +109,7 @@ tm uninstall          # clean up hooks and data
 ## Tech Stack
 
 - **Language:** Go
-- **TUI:** bubbletea + lipgloss + bubbles
+- **Historical v0.x TUI:** bubbletea + lipgloss + bubbles
 - **Storage:** SQLite (modernc.org/sqlite)
 - **Distribution:** goreleaser + Homebrew Cask tap
 

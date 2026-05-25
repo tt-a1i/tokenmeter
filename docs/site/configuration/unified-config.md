@@ -1,128 +1,257 @@
 # Unified Configuration
 
-TokenMeter is moving toward a unified user configuration file.
+TokenMeter uses a unified JSON config file for settings that should survive across commands.
 
-This page documents the v1.x roadmap shape.
-
-Some options may still be command-line only in current builds.
-
-Use this page as the contract direction for future config work.
-
-The goal is to reduce scattered flags and source-specific setup.
-
-The proposed file is:
+The default path is:
 
 ```text
 ~/.tokenmeter/config.json
 ```
 
-Legacy installs may still have data under `~/.agmon`.
+You can inspect the effective path with:
+
+```bash
+tm config path
+```
+
+You can print the loaded config with:
+
+```bash
+tm config show
+```
+
+You can create an example file with:
+
+```bash
+tm config init
+```
+
+Use `--config PATH` when a command should read a specific config file.
+
+The environment variable `TOKENMETER_CONFIG` can also point at a config file.
+
+## Search Order
+
+TokenMeter resolves config paths in this order:
+
+1. Explicit `--config PATH`.
+2. `TOKENMETER_CONFIG`.
+3. Local `.tokenmeter/tokenmeter.json` in the current working directory.
+4. Global `~/.tokenmeter/config.json`.
+
+The first existing file wins.
+
+If no file exists, commands use built-in defaults.
+
+`tm config path` still prints the path that would be used.
+
+Legacy installs may also have files under `~/.agmon`.
 
 Do not move legacy files manually unless a migration command tells you to.
 
-## Why Unified Config
+## Current Effective Scope (v1.x Phase 1)
 
-TokenMeter has several configuration layers today.
+The unified config schema is larger than the first runtime integration.
 
-CLI flags are explicit and script-friendly.
+Current effective behavior:
 
-Environment variables are useful for source discovery.
+| Area | Status | Notes |
+| --- | --- | --- |
+| Search path | ✅ Effective | `--config`, `TOKENMETER_CONFIG`, local config, then global config. |
+| Legacy pricing merge | ✅ Effective | Missing unified pricing can fall back to legacy `pricing.json`. |
+| Legacy webhook merge | ✅ Effective | Missing unified webhooks can fall back to legacy `webhooks.json`. |
+| Pricing runtime sync | ✅ Effective | `pricing.runtimeSyncURL` and `pricing.cacheTTLHours` are read by runtime pricing. |
+| Webhook endpoints | ✅ Effective | `webhooks.endpoints` and endpoint thresholds are part of the loaded model. |
+| Statusline | ⏳ Partially effective | Unified `statusline` fields are being wired through the v1.x config follow-up. |
+| `defaults` | ⏳ Not fully effective | Schema exists; broad CLI default application is part of the follow-up. |
+| `commands.<name>` | ⏳ Not fully effective | Schema exists; per-command defaults are part of the follow-up. |
+| `sources` | ⏳ Not effective | Schema exists as nested defaults/commands; source data-dir aliases are not current schema fields. |
 
-Statusline has its own file.
+For strict automation, prefer explicit CLI flags until the relevant section is marked effective.
 
-Budgets and webhooks have their own stores.
+## Schema Shape
 
-A unified config gives users one place for stable defaults.
+The current Go schema is defined in `internal/config/config.go`.
 
-It also makes setup easier to document.
+Mirror the JSON tags from the structs, not field names guessed from CLI flags.
 
-It should not remove CLI flags.
+Top-level shape:
 
-Flags should continue to override config for one command.
+```json
+{
+  "$schema": "https://tokenmeter.dev/config-schema.json",
+  "defaults": {},
+  "commands": {},
+  "pricing": {},
+  "webhooks": {},
+  "statusline": {},
+  "sources": {}
+}
+```
 
-## Proposed Shape
+All sections are optional.
 
-The v1.x model has three levels.
+Unknown keys may be ignored by the current loader.
 
-`defaults` applies to all commands.
+Keep config files valid JSON.
 
-`commands` applies to a named command family.
+## Defaults
 
-`sources` applies to source adapters.
+`defaults` stores shared CLI-style defaults.
+
+Current JSON tags:
+
+```json
+{
+  "defaults": {
+    "since": "20260501",
+    "until": "20260525",
+    "json": false,
+    "offline": false,
+    "timezone": "Asia/Shanghai",
+    "mode": "auto",
+    "order": "asc",
+    "breakdown": false,
+    "project": "/Users/admin/code/agmon",
+    "noColor": false,
+    "speed": "auto",
+    "compact": true,
+    "token_limit": "500000"
+  }
+}
+```
+
+Important spelling details:
+
+`noColor` is camelCase.
+
+`token_limit` is snake_case in the current struct tag.
+
+There is no `sessionLength` field in the current `Defaults` struct.
+
+There is no `session_length` field in the current `Defaults` struct.
+
+Use `--session-length` explicitly until config support for that setting exists.
+
+## Commands
+
+`commands` maps a command name to the same `Defaults` shape.
 
 Example:
 
 ```json
 {
-  "defaults": {
-    "timezone": "Asia/Shanghai",
-    "mode": "auto",
-    "offline": false,
-    "no_color": false
-  },
   "commands": {
+    "daily": {
+      "timezone": "Asia/Shanghai",
+      "compact": true
+    },
     "blocks": {
-      "session_length": "5h",
-      "token_limit": 500000
-    },
-    "statusline": {
-      "burn_rate_display": "emoji-text",
-      "context_low_threshold": 0.5,
-      "context_medium_threshold": 0.75
-    }
-  },
-  "sources": {
-    "opencode": {
-      "data_dir": "~/.local/share/opencode"
-    },
-    "qwen": {
-      "data_dir": "~/.qwen"
+      "token_limit": "500000"
     }
   }
 }
 ```
 
-This is forward-looking documentation.
+This section is intended for stable per-command preferences.
 
-Check release notes before relying on every key.
+It should not replace one-off date filters in scripts.
 
-## Defaults Level
+CLI flags should remain the highest-precedence override.
 
-`defaults.timezone` maps to `--timezone`.
+## Pricing
 
-`defaults.mode` maps to `--mode`.
+`pricing` stores runtime pricing configuration and optional override rules.
 
-`defaults.offline` maps to `--offline`.
+Example:
 
-`defaults.no_color` maps to `--no-color`.
-
-Defaults should be conservative.
-
-They should not surprise scripts.
-
-They should not hide data.
-
-They should be easy to override with flags.
-
-For example:
-
-```bash
-tm daily --timezone UTC
+```json
+{
+  "pricing": {
+    "runtimeSyncURL": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+    "cacheTTLHours": 24,
+    "codex": [
+      {
+        "match": ["gpt-5.4"],
+        "inputPerMillion": 2.5,
+        "outputPerMillion": 15,
+        "cacheCreatePerMill": 0,
+        "cacheReadPerMill": 0.25,
+        "fastMultiplier": 2
+      }
+    ]
+  }
+}
 ```
 
-should override a config timezone for that run.
+`runtimeSyncURL` is camelCase.
 
-## Commands Level
+`cacheTTLHours` is camelCase.
 
-Command config stores stable preferences for command families.
+Pricing rule fields use camelCase.
 
-`commands.blocks.session_length` maps to `--session-length`.
+Rules with negative rates are invalid.
 
-`commands.blocks.token_limit` maps to `--token-limit`.
+`match` is required for override rules.
 
-`commands.statusline.burn_rate_display` controls statusline burn-rate display.
+## Webhooks
 
-Valid burn-rate display modes are:
+`webhooks` stores endpoint configuration.
+
+Example:
+
+```json
+{
+  "webhooks": {
+    "endpoints": [
+      {
+        "url": "https://example.test/tokenmeter",
+        "events": ["budget_warn", "session_high_cost"],
+        "format": "json",
+        "retry": {
+          "max_attempts": 3,
+          "initial_backoff_seconds": 5
+        },
+        "thresholds": {
+          "session_high_cost_usd": 10,
+          "tool_failure_rate_pct": 20
+        }
+      }
+    ]
+  }
+}
+```
+
+Endpoint `retry` and `thresholds` fields currently use snake_case.
+
+Keep webhook secrets out of this file when possible.
+
+Use environment-level secret management for shared machines.
+
+## Statusline
+
+`statusline` stores statusline display preferences.
+
+Example:
+
+```json
+{
+  "statusline": {
+    "quota_usd": 25,
+    "format": "compact",
+    "color": "true",
+    "context_low_threshold": 50,
+    "context_medium_threshold": 80,
+    "burn_rate_display": "emoji-text"
+  }
+}
+```
+
+Statusline fields currently use snake_case.
+
+`color` is a string in the current unified config model.
+
+Accepted burn-rate display modes are:
 
 ```text
 off
@@ -131,127 +260,72 @@ text
 emoji-text
 ```
 
-Statusline context thresholds are ratios.
+Keep the low context threshold below the medium context threshold.
 
-`0.5` means fifty percent.
+## Sources
 
-Keep the low threshold below the medium threshold.
+`sources` maps a source name to nested defaults and command overrides.
 
-Command config should not replace report filters.
-
-Date windows like `--since` and `--until` are usually better as command-line flags.
-
-## Sources Level
-
-Source config is intended to replace repeated environment exports.
-
-Each key should match a source command name.
-
-Examples:
+Current schema:
 
 ```json
 {
   "sources": {
-    "amp": { "data_dir": "~/.local/share/amp" },
-    "droid": { "sessions_dir": "~/.factory/sessions" },
-    "copilot": { "otel_file": "~/.copilot/otel/usage.jsonl" }
-  }
-}
-```
-
-The source level should mirror existing environment variables.
-
-For example, `sources.amp.data_dir` corresponds to `AMP_DATA_DIR`.
-
-`sources.droid.sessions_dir` corresponds to `DROID_SESSIONS_DIR`.
-
-`sources.copilot.otel_file` corresponds to `COPILOT_OTEL_FILE_EXPORTER_PATH`.
-
-Environment variables should remain useful in CI.
-
-Config should make daily workstation use simpler.
-
-## Precedence
-
-Expected precedence from highest to lowest:
-
-1. Explicit CLI flags.
-2. Environment variables.
-3. Unified config.
-4. Built-in defaults.
-
-This keeps scripts predictable.
-
-It keeps existing environment-based source discovery working.
-
-It lets users define defaults without losing one-off overrides.
-
-When debugging, print the command and relevant environment variables first.
-
-Then inspect the config file.
-
-## Validation
-
-The config file should be valid JSON.
-
-Unknown keys should be ignored or warned about.
-
-Type errors should be actionable.
-
-Paths should support `~` expansion.
-
-Comma-separated roots may remain environment-only unless the config schema defines arrays.
-
-For config arrays, prefer:
-
-```json
-{
-  "sources": {
-    "kilo": {
-      "data_dirs": ["~/.local/share/kilo", "/Volumes/archive/kilo"]
+    "opencode": {
+      "defaults": {
+        "json": true
+      },
+      "commands": {
+        "daily": {
+          "since": "20260501"
+        }
+      }
     }
   }
 }
 ```
 
-Avoid storing secrets in this file.
+This is not a data-directory schema.
 
-TokenMeter source adapters read local usage files.
+Do not use `data_dir`, `sessions_dir`, or `otel_file` under `sources` unless a later release adds those fields.
 
-They should not need provider API keys for normal reports.
+For source discovery today, continue using the documented environment variables such as `OPENCODE_DATA_DIR`, `DROID_SESSIONS_DIR`, and `COPILOT_OTEL_FILE_EXPORTER_PATH`.
 
-## Migration Notes
+## Precedence
 
-Keep existing environment variables for now.
+Expected precedence is:
 
-Move only stable preferences into config.
+1. Explicit CLI flags.
+2. Environment variables for config path and source discovery.
+3. Unified config.
+4. Built-in defaults.
 
-Good candidates are timezone, color, offline mode, block length, and token limit.
+This keeps scripts predictable.
 
-Good source candidates are non-standard data roots.
+It also lets workstation users set durable defaults.
 
-Avoid putting transient date ranges into config.
+When debugging, print the command line first.
 
-Avoid putting one-off project filters into config.
+Then inspect relevant environment variables.
 
-When v1.x unified config lands, release notes should list supported keys.
+Then run `tm config path`.
 
-Until then, treat this document as roadmap guidance.
+Then run `tm config show`.
 
 ## Troubleshooting
 
-If config seems ignored, check whether the current build supports unified config.
+If config seems ignored, confirm the current TokenMeter build supports the section you are using.
 
-If a flag behaves differently, remember flags should win.
+If JSON fails to parse, validate it with `jq`.
 
-If an environment variable wins, unset it and rerun.
+If `tm config show` is empty, check `tm config path`.
 
-If JSON fails to parse, validate the file with `jq`.
+If pricing overrides do not apply, check `pricing` field names for camelCase.
 
-If a source path is wrong, run the source-specific command with `--json`.
+If webhooks do not load, check endpoint nesting under `webhooks.endpoints`.
 
-If statusline ignores display settings, check `~/.tokenmeter/statusline.json` too.
+If source roots do not change, use source environment variables instead of `sources`.
+
+If statusline settings do not appear, compare your installed version with the statusline config follow-up release.
 
 If docs and behavior differ, prefer command help and release notes for the installed version.
-
-Report mismatches with the TokenMeter version and config snippet.
