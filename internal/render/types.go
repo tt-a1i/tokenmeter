@@ -89,6 +89,7 @@ type Renderer interface {
 	RenderAggregate(w io.Writer, kind string, rows []AggregateRow, opts Options) error
 	RenderSessions(w io.Writer, rows []SessionRow, opts Options) error
 	RenderBlocks(w io.Writer, rows []BlockRow, opts Options) error
+	RenderToolErrors(w io.Writer, report ToolErrorReport, opts Options) error
 }
 
 // New returns a Renderer that dispatches to either boxed-table or JSON

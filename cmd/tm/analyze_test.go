@@ -69,6 +69,83 @@ func TestRunAnalyzeJSONFormat(t *testing.T) {
 	}
 }
 
+func TestRunAnalyzeToolErrorsJSONFormat(t *testing.T) {
+	home := t.TempDir()
+	db := openHomeDB(t, home)
+	now := time.Now().Add(-24 * time.Hour)
+	seedAnalyzeCLISession(t, db, "tool-errors-json", event.PlatformClaude, now, "sonnet", 2.5, "internal/foo.go")
+	for i := 0; i < 3; i++ {
+		callID := "tool-errors-fail-" + string(rune('a'+i))
+		if _, err := db.InsertToolCallStart(callID, "agent-tool-errors-json", "tool-errors-json", "Bash", "{}", now.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatalf("insert fail start: %v", err)
+		}
+		if err := db.UpdateToolCallEnd(callID, "exit code 1: /Users/admin/code/agmon/file123.go", event.StatusFail, 50, now.Add(time.Duration(i)*time.Hour+time.Second)); err != nil {
+			t.Fatalf("insert fail end: %v", err)
+		}
+	}
+
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--json"})
+	out := captureStdout(t, func() {
+		if err := runAnalyze(); err != nil {
+			t.Fatalf("runAnalyze: %v", err)
+		}
+	})
+
+	var payload struct {
+		ToolErrors struct {
+			TopTools []struct {
+				Tool string `json:"tool"`
+			} `json:"top_tools"`
+			Patterns []struct {
+				Count int64 `json:"count"`
+			} `json:"patterns"`
+			Daily []struct {
+				Date string `json:"date"`
+			} `json:"daily"`
+		} `json:"tool_errors"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("invalid tool error json: %v\n%s", err, out)
+	}
+	if len(payload.ToolErrors.TopTools) == 0 || payload.ToolErrors.TopTools[0].Tool != "Bash" {
+		t.Fatalf("unexpected top tools: %+v", payload.ToolErrors.TopTools)
+	}
+	if len(payload.ToolErrors.Patterns) == 0 || payload.ToolErrors.Patterns[0].Count < 3 {
+		t.Fatalf("expected grouped pattern: %+v", payload.ToolErrors.Patterns)
+	}
+	if len(payload.ToolErrors.Daily) == 0 {
+		t.Fatalf("expected daily failure series")
+	}
+}
+
+func TestRunAnalyzeToolErrorsTextIncludesSections(t *testing.T) {
+	home := t.TempDir()
+	db := openHomeDB(t, home)
+	now := time.Now().Add(-24 * time.Hour)
+	seedAnalyzeCLISession(t, db, "tool-errors-text", event.PlatformClaude, now, "sonnet", 2.5, "internal/foo.go")
+	for i := 0; i < 3; i++ {
+		callID := "tool-errors-text-fail-" + string(rune('a'+i))
+		if _, err := db.InsertToolCallStart(callID, "agent-tool-errors-text", "tool-errors-text", "Edit", "{}", now.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatalf("insert fail start: %v", err)
+		}
+		if err := db.UpdateToolCallEnd(callID, "String to replace not found in /tmp/file42.go", event.StatusFail, 50, now.Add(time.Duration(i)*time.Hour+time.Second)); err != nil {
+			t.Fatalf("insert fail end: %v", err)
+		}
+	}
+
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors"})
+	out := captureStdout(t, func() {
+		if err := runAnalyze(); err != nil {
+			t.Fatalf("runAnalyze: %v", err)
+		}
+	})
+	for _, want := range []string{"Top Failing Tools", "Error Pattern Groups", "Daily failure rate", "Edit"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("tool error output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func seedAnalyzeCLISession(t *testing.T, db interface {
 	UpsertSession(string, event.Platform, time.Time) error
 	UpdateSessionMeta(string, string, string) error

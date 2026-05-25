@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/tt-a1i/tokenmeter/internal/render"
 	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
 
@@ -28,6 +29,22 @@ func runAnalyze() error {
 	if err != nil {
 		return err
 	}
+	if opts.since != "" || opts.until != "" {
+		from, to, label, err = analyzeExplicitRange(opts.since, opts.until)
+		if err != nil {
+			return err
+		}
+	}
+	if opts.toolErrors {
+		report, err := loadToolErrorReport(db, from, to)
+		if err != nil {
+			return err
+		}
+		return render.New().RenderToolErrors(os.Stdout, report, render.Options{
+			JSON:    opts.jsonOutput,
+			Compact: opts.compact,
+		})
+	}
 	result, err := db.Analyze(from, to)
 	if err != nil {
 		return err
@@ -46,6 +63,10 @@ func runAnalyze() error {
 type analyzeOptions struct {
 	rangeName  string
 	jsonOutput bool
+	toolErrors bool
+	compact    bool
+	since      string
+	until      string
 }
 
 func parseAnalyzeArgs(args []string) (analyzeOptions, error) {
@@ -60,6 +81,22 @@ func parseAnalyzeArgs(args []string) (analyzeOptions, error) {
 			i++
 		case "--json":
 			opts.jsonOutput = true
+		case "--tool-errors":
+			opts.toolErrors = true
+		case "--compact":
+			opts.compact = true
+		case "--since":
+			if i+1 >= len(args) {
+				return opts, fmt.Errorf("--since requires a value")
+			}
+			opts.since = args[i+1]
+			i++
+		case "--until":
+			if i+1 >= len(args) {
+				return opts, fmt.Errorf("--until requires a value")
+			}
+			opts.until = args[i+1]
+			i++
 		default:
 			return opts, fmt.Errorf("unknown analyze argument: %s", args[i])
 		}
@@ -70,6 +107,45 @@ func parseAnalyzeArgs(args []string) (analyzeOptions, error) {
 	default:
 		return opts, fmt.Errorf("unknown analyze range %q (use week, month, all)", opts.rangeName)
 	}
+}
+
+func analyzeExplicitRange(since, until string) (time.Time, time.Time, string, error) {
+	from := time.Time{}
+	to := time.Now()
+	var err error
+	if since != "" {
+		from, err = time.Parse("20060102", since)
+		if err != nil {
+			return time.Time{}, time.Time{}, "", fmt.Errorf("invalid --since %q (want YYYYMMDD): %w", since, err)
+		}
+	}
+	if until != "" {
+		to, err = time.Parse("20060102", until)
+		if err != nil {
+			return time.Time{}, time.Time{}, "", fmt.Errorf("invalid --until %q (want YYYYMMDD): %w", until, err)
+		}
+		to = to.AddDate(0, 0, 1)
+	}
+	if from.IsZero() {
+		from = to.AddDate(0, 0, -30)
+	}
+	return from, to, from.Format("2006-01-02") + " to " + to.AddDate(0, 0, -1).Format("2006-01-02"), nil
+}
+
+func loadToolErrorReport(db *storage.DB, from, to time.Time) (render.ToolErrorReport, error) {
+	top, err := db.TopFailingTools(from, to, 10)
+	if err != nil {
+		return render.ToolErrorReport{}, err
+	}
+	patterns, err := db.ErrorPatternGroups(from, to, 3)
+	if err != nil {
+		return render.ToolErrorReport{}, err
+	}
+	daily, err := db.DailyFailureRate(from, to)
+	if err != nil {
+		return render.ToolErrorReport{}, err
+	}
+	return render.ToolErrorReport{TopTools: top, Patterns: patterns, Daily: daily}, nil
 }
 
 func analyzeRange(db *storage.DB, name string) (time.Time, time.Time, string, error) {
