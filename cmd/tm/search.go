@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -13,7 +14,11 @@ func runSearch() error {
 	if maybePrintCmdHelp("search", os.Args[2:]) {
 		return nil
 	}
-	query, limit, err := parseSearchArgs(os.Args[2:])
+	args, err := parseSearchArgs(os.Args[2:])
+	if err != nil {
+		return err
+	}
+	query, err := storage.ParseQuery(args.Query)
 	if err != nil {
 		return err
 	}
@@ -21,9 +26,17 @@ func runSearch() error {
 	db := mustOpenDB()
 	defer db.Close()
 
-	hits, err := db.SearchHits(query, limit)
+	hits, err := db.SearchAdvanced(query, args.Limit)
 	if err != nil {
 		return err
+	}
+	if args.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(map[string]any{
+			"query":   query,
+			"results": hits,
+		})
 	}
 
 	fmt.Printf("Found %d matches:\n\n", len(hits))
@@ -31,7 +44,7 @@ func runSearch() error {
 		fmt.Printf("[%s] %s · %s\n", hit.Kind, hit.SessionName, hit.Timestamp.Format("2006-01-02 15:04"))
 		detail := plainSearchExcerpt(hit.Excerpt)
 		if hit.Kind == "tool_param" {
-			if toolName := searchHitToolName(db, hit, query, true); toolName != "" {
+			if toolName := searchHitToolName(db, hit, strings.Join(query.Keywords, " "), true); toolName != "" {
 				detail = toolName + " " + detail
 			}
 		} else if hit.Kind == "tool_result" && !strings.HasPrefix(detail, "output:") {
@@ -47,33 +60,41 @@ func plainSearchExcerpt(s string) string {
 	return strings.ReplaceAll(s, "</mark>", "")
 }
 
-func parseSearchArgs(args []string) (string, int, error) {
-	limit := 20
+type searchArgs struct {
+	Query string
+	Limit int
+	JSON  bool
+}
+
+func parseSearchArgs(args []string) (searchArgs, error) {
+	out := searchArgs{Limit: 20}
 	var queryParts []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--limit":
 			if i+1 >= len(args) {
-				return "", 0, fmt.Errorf("--limit requires a value")
+				return out, fmt.Errorf("--limit requires a value")
 			}
 			n, err := strconv.Atoi(args[i+1])
 			if err != nil || n <= 0 {
-				return "", 0, fmt.Errorf("invalid limit: %s", args[i+1])
+				return out, fmt.Errorf("invalid limit: %s", args[i+1])
 			}
-			limit = n
+			out.Limit = n
 			i++
+		case "--json":
+			out.JSON = true
 		default:
 			if strings.HasPrefix(args[i], "--") {
-				return "", 0, fmt.Errorf("unknown search argument: %s", args[i])
+				return out, fmt.Errorf("unknown search argument: %s", args[i])
 			}
 			queryParts = append(queryParts, args[i])
 		}
 	}
-	query := strings.TrimSpace(strings.Join(queryParts, " "))
-	if query == "" {
-		return "", 0, fmt.Errorf("usage: tm search <query> [--limit N]")
+	out.Query = strings.TrimSpace(strings.Join(queryParts, " "))
+	if out.Query == "" {
+		return out, fmt.Errorf("usage: tm search <query> [--limit N]")
 	}
-	return query, limit, nil
+	return out, nil
 }
 
 func searchHitToolName(db *storage.DB, hit storage.SearchHit, query string, params bool) string {

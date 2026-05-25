@@ -292,10 +292,18 @@ var cmdHelps = map[string]cmdHelp{
 		name:        "search",
 		short:       "Search tool calls and file paths",
 		usage:       "tm search <query> [options]",
-		description: "Search tool parameters, tool results, and file paths stored in the local database.",
-		options:     []optionHelp{{"--limit N", "maximum matches to print (default: 20)"}},
-		examples:    []string{"tm search Edit", "tm search src/internal --limit 10"},
-		seeAlso:     []string{"report", "export"},
+		description: "Search tool parameters, tool results, and file paths stored in the local database. Query filters: tool:NAME, session:PREFIX, cost:>N, cost:<N, tokens:>N, tokens:<N, since:DATE, until:DATE, status:failed|ok, platform:claude|codex.",
+		options: []optionHelp{
+			{"--limit N", "maximum matches to print (default: 20)"},
+			{"--json", "output machine-readable JSON with parsed query and results"},
+		},
+		examples: []string{
+			"tm search Edit",
+			"tm search src/internal --limit 10",
+			"tm search \"exit code\" tool:Bash status:failed cost:>1 since:2026-05-01",
+			"tm search tokens:<100000 platform:codex --json",
+		},
+		seeAlso: []string{"report", "export"},
 	},
 	"compare": {
 		name:        "compare",

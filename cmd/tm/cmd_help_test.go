@@ -108,6 +108,12 @@ func TestHelp_StatuslineMentionsBurnRateDisplay(t *testing.T) {
 	assertCmdHelpMentions(t, "statusline", "--burn-rate-display")
 }
 
+func TestHelpSearchMentionsAdvancedQueryFilters(t *testing.T) {
+	for _, want := range []string{"tool:NAME", "cost:>N", "tokens:<N", "since:DATE", "status:failed", "platform:codex"} {
+		assertCmdHelpMentions(t, "search", want)
+	}
+}
+
 func assertCmdHelpMentions(t *testing.T, command, want string) {
 	t.Helper()
 	out := captureStdout(t, func() {
