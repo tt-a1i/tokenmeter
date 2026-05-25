@@ -49,7 +49,7 @@ Use the report commands when you want scriptable output.
 ```bash
 tm setup
 tm daily --compact
-tm pricing refresh --offline
+tm pricing refresh
 tm config show
 tm analyze --tool-errors
 tm web
@@ -59,13 +59,17 @@ tm web
 
 `tm daily --compact` scans installed sources and prints the daily token and cost summary in a narrow-terminal friendly layout.
 
-`tm pricing refresh --offline` verifies the LiteLLM pricing cache path and uses local fallback data when networking is unavailable.
+`tm pricing refresh` updates the LiteLLM runtime pricing cache.
 
 `tm config show` prints the unified config model and legacy merge result.
 
 `tm analyze --tool-errors` highlights repeated tool failures and error patterns.
 
 `tm web` starts the browser dashboard, usually on port `8370`.
+
+## Offline usage
+
+Use `tm daily --offline` to run reports without network refresh. `tm pricing refresh --offline` intentionally skips the refresh and returns exit 1.
 
 ## What's New in v1.2
 
