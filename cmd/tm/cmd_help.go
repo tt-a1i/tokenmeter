@@ -138,6 +138,8 @@ var cmdHelps = map[string]cmdHelp{
 		options: []optionHelp{
 			{"--speed auto|standard|fast", "Codex pricing speed tier (default auto)"},
 			{"--compact", "use compact table layout"},
+			{"--instances", "show project instance rows"},
+			{"--project-aliases JSON|PATH", "normalize workspace paths with inline JSON or a JSON file"},
 			{"--offline", "skip online pricing refresh"},
 		},
 		examples: []string{"tm daily", "tm daily --json"},
@@ -151,6 +153,8 @@ var cmdHelps = map[string]cmdHelp{
 		options: []optionHelp{
 			{"--speed auto|standard|fast", "Codex pricing speed tier (default auto)"},
 			{"--compact", "use compact table layout"},
+			{"--instances", "show project instance rows"},
+			{"--project-aliases JSON|PATH", "normalize workspace paths with inline JSON or a JSON file"},
 		},
 		examples: []string{"tm weekly"},
 		seeAlso:  []string{"daily", "monthly"},
@@ -163,6 +167,8 @@ var cmdHelps = map[string]cmdHelp{
 		options: []optionHelp{
 			{"--speed auto|standard|fast", "Codex pricing speed tier (default auto)"},
 			{"--compact", "use compact table layout"},
+			{"--instances", "show project instance rows"},
+			{"--project-aliases JSON|PATH", "normalize workspace paths with inline JSON or a JSON file"},
 		},
 		examples: []string{"tm monthly"},
 		seeAlso:  []string{"daily", "weekly"},
@@ -175,6 +181,8 @@ var cmdHelps = map[string]cmdHelp{
 		options: []optionHelp{
 			{"--speed auto|standard|fast", "Codex pricing speed tier (default auto)"},
 			{"--compact", "use compact table layout"},
+			{"--instances", "show project instance rows"},
+			{"--project-aliases JSON|PATH", "normalize workspace paths with inline JSON or a JSON file"},
 		},
 		examples: []string{"tm session", "tm session abc123"},
 		seeAlso:  []string{"share", "blocks"},
@@ -283,6 +291,9 @@ var cmdHelps = map[string]cmdHelp{
 		description: "Summarize AI agent usage, cost, sessions, models, tools, files, and activity heatmap.",
 		options: []optionHelp{
 			{"--range RANGE", "week | month | all (default: month)"},
+			{"--tool-errors", "show failing tools and repeated error patterns"},
+			{"--file-churn", "show files with high edit churn and hotspots"},
+			{"--limit N", "limit file churn rows (default: 20)"},
 			{"--json", "output machine-readable JSON"},
 		},
 		examples: []string{"tm analyze", "tm analyze --range week", "tm analyze --json"},

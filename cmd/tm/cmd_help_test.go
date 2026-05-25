@@ -88,6 +88,14 @@ func TestHelp_DailyMentionsCompact(t *testing.T) {
 	assertCmdHelpMentions(t, "daily", "--compact")
 }
 
+func TestHelp_DailyMentionsInstances(t *testing.T) {
+	assertCmdHelpMentions(t, "daily", "--instances")
+}
+
+func TestHelp_DailyMentionsProjectAliases(t *testing.T) {
+	assertCmdHelpMentions(t, "daily", "--project-aliases")
+}
+
 func TestHelp_WeeklyMentionsCompact(t *testing.T) {
 	assertCmdHelpMentions(t, "weekly", "--compact")
 }
@@ -106,6 +114,14 @@ func TestHelp_BlocksMentionsTokenLimit(t *testing.T) {
 
 func TestHelp_StatuslineMentionsBurnRateDisplay(t *testing.T) {
 	assertCmdHelpMentions(t, "statusline", "--burn-rate-display")
+}
+
+func TestHelp_AnalyzeMentionsToolErrors(t *testing.T) {
+	assertCmdHelpMentions(t, "analyze", "--tool-errors")
+}
+
+func TestHelp_AnalyzeMentionsFileChurn(t *testing.T) {
+	assertCmdHelpMentions(t, "analyze", "--file-churn")
 }
 
 func TestHelpSearchMentionsAdvancedQueryFilters(t *testing.T) {
