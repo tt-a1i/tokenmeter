@@ -81,6 +81,29 @@ func TestLoadWebhookConfigFromUnifiedConfig(t *testing.T) {
 	}
 }
 
+func TestLoadWebhookConfigUnifiedAnomalyThresholds(t *testing.T) {
+	base := setWebhookTestHome(t)
+	path := filepath.Join(base, "config.json")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"webhooks":{"endpoints":[{"url":"https://example.test/anomaly","events":["cost_spike","usage_regression"],"format":"json","thresholds":{"cost_spike_ratio":2.5,"regression_failure_count_min":12,"regression_ratio_min":3.0}}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadWebhookConfig()
+	if err != nil {
+		t.Fatalf("LoadWebhookConfig: %v", err)
+	}
+	if cfg == nil || len(cfg.Endpoints) != 1 {
+		t.Fatalf("unified webhook config not loaded: %+v", cfg)
+	}
+	thresholds := cfg.Endpoints[0].Thresholds
+	if thresholds.CostSpikeRatio != 2.5 || thresholds.RegressionFailureCountMin != 12 || thresholds.RegressionRatioMin != 3.0 {
+		t.Fatalf("anomaly thresholds not loaded: %+v", thresholds)
+	}
+}
+
 func TestPostWebhookSlackFormat(t *testing.T) {
 	var got map[string]string
 	srv := captureWebhookServer(t, &got)

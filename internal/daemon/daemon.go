@@ -219,6 +219,11 @@ func (d *Daemon) Start() error {
 	d.bgWG.Add(1)
 	go func() {
 		defer d.bgWG.Done()
+		d.anomalySweepLoop()
+	}()
+	d.bgWG.Add(1)
+	go func() {
+		defer d.bgWG.Done()
 		d.maintenanceLoop()
 	}()
 	d.bgWG.Add(1)

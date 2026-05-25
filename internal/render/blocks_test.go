@@ -50,6 +50,44 @@ func TestRenderBlocksTokenLimitColorsStatuses(t *testing.T) {
 	}
 }
 
+func TestRenderBlocksTokenLimitNoColorDisablesStatusANSI(t *testing.T) {
+	var buf bytes.Buffer
+	rows := []BlockRow{
+		tokenLimitBlockRow(50, 100, "OK"),
+		tokenLimitBlockRow(80, 100, "WARN"),
+		tokenLimitBlockRow(100, 100, "ALERT"),
+	}
+	if err := New().RenderBlocks(&buf, rows, Options{Color: Resolve(false, true, &buf)}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "\x1b[") {
+		t.Fatalf("--no-color should disable ANSI escapes:\n%q", out)
+	}
+	for _, want := range []string{"OK", "WARN", "ALERT"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("plain status missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRenderBlocksTokenLimitNonTTYDefaultsNoANSI(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("FORCE_COLOR", "")
+	var buf bytes.Buffer
+	rows := []BlockRow{
+		tokenLimitBlockRow(50, 100, "OK"),
+		tokenLimitBlockRow(80, 100, "WARN"),
+		tokenLimitBlockRow(100, 100, "ALERT"),
+	}
+	if err := New().RenderBlocks(&buf, rows, Options{Color: Resolve(false, false, &buf)}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "\x1b[") {
+		t.Fatalf("non-tty output should not contain ANSI escapes:\n%q", buf.String())
+	}
+}
+
 func TestRenderBlocksTokenLimitCompactProgressUsesEightCells(t *testing.T) {
 	var buf bytes.Buffer
 	if err := New().RenderBlocks(&buf, []BlockRow{tokenLimitBlockRow(80, 100, "WARN")}, Options{Compact: true}); err != nil {

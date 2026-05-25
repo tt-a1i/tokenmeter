@@ -89,8 +89,11 @@ type RetryPolicy struct {
 }
 
 type WebhookThresholds struct {
-	SessionHighCostUSD float64 `json:"session_high_cost_usd,omitempty"`
-	ToolFailureRatePct float64 `json:"tool_failure_rate_pct,omitempty"`
+	SessionHighCostUSD        float64 `json:"session_high_cost_usd,omitempty"`
+	ToolFailureRatePct        float64 `json:"tool_failure_rate_pct,omitempty"`
+	CostSpikeRatio            float64 `json:"cost_spike_ratio,omitempty"`
+	RegressionFailureCountMin int     `json:"regression_failure_count_min,omitempty"`
+	RegressionRatioMin        float64 `json:"regression_ratio_min,omitempty"`
 }
 
 type Options struct {

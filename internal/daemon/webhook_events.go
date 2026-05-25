@@ -12,6 +12,9 @@ import (
 const (
 	defaultSessionHighCostUSD = 5.0
 	defaultToolFailureRatePct = 20.0
+	defaultCostSpikeRatio     = 2.0
+	defaultRegressionMinFails = 10
+	defaultRegressionRatio    = 2.0
 )
 
 func (d *Daemon) checkSessionHighCost(ctx context.Context, sessionID string) {
@@ -161,6 +164,27 @@ func toolFailureRateThreshold(ep EndpointConfig) float64 {
 		return ep.Thresholds.ToolFailureRatePct
 	}
 	return defaultToolFailureRatePct
+}
+
+func costSpikeRatioThreshold(ep EndpointConfig) float64 {
+	if ep.Thresholds.CostSpikeRatio > 0 {
+		return ep.Thresholds.CostSpikeRatio
+	}
+	return defaultCostSpikeRatio
+}
+
+func regressionFailureCountMin(ep EndpointConfig) int {
+	if ep.Thresholds.RegressionFailureCountMin > 0 {
+		return ep.Thresholds.RegressionFailureCountMin
+	}
+	return defaultRegressionMinFails
+}
+
+func regressionRatioMin(ep EndpointConfig) float64 {
+	if ep.Thresholds.RegressionRatioMin > 0 {
+		return ep.Thresholds.RegressionRatioMin
+	}
+	return defaultRegressionRatio
 }
 
 func isFailedToolStatus(status string) bool {

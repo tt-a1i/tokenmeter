@@ -21,6 +21,8 @@ const (
 	webhookEventBudgetOver       = "budget_over"
 	webhookEventSessionHighCost  = "session_high_cost"
 	webhookEventToolFailureRate  = "tool_failure_rate"
+	webhookEventCostSpike        = "cost_spike"
+	webhookEventUsageRegression  = "usage_regression"
 	webhookEventDaemonStarted    = "daemon_started"
 	webhookEventDaemonLostEvents = "daemon_lost_events"
 	webhookEventTest             = "webhook_test"
@@ -50,17 +52,22 @@ type RetryPolicy struct {
 }
 
 type WebhookThresholds struct {
-	SessionHighCostUSD float64 `json:"session_high_cost_usd"`
-	ToolFailureRatePct float64 `json:"tool_failure_rate_pct"`
+	SessionHighCostUSD        float64 `json:"session_high_cost_usd"`
+	ToolFailureRatePct        float64 `json:"tool_failure_rate_pct"`
+	CostSpikeRatio            float64 `json:"cost_spike_ratio"`
+	RegressionFailureCountMin int     `json:"regression_failure_count_min"`
+	RegressionRatioMin        float64 `json:"regression_ratio_min"`
 }
 
 type WebhookPayload struct {
-	Event     string                     `json:"event"`
-	Budget    *BudgetWebhookBudget       `json:"budget,omitempty"`
-	Session   *SessionWebhookPayload     `json:"session,omitempty"`
-	Tool      *ToolFailureWebhookPayload `json:"tool,omitempty"`
-	Daemon    *DaemonWebhookPayload      `json:"daemon,omitempty"`
-	Timestamp time.Time                  `json:"timestamp"`
+	Event            string                       `json:"event"`
+	Budget           *BudgetWebhookBudget         `json:"budget,omitempty"`
+	Session          *SessionWebhookPayload       `json:"session,omitempty"`
+	Tool             *ToolFailureWebhookPayload   `json:"tool,omitempty"`
+	CostSpike        *CostSpikeWebhookPayload     `json:"cost_spike,omitempty"`
+	UsageRegressions []UsageRegressionWebhookItem `json:"usage_regressions,omitempty"`
+	Daemon           *DaemonWebhookPayload        `json:"daemon,omitempty"`
+	Timestamp        time.Time                    `json:"timestamp"`
 }
 
 type BudgetWebhookPayload struct {
@@ -92,6 +99,28 @@ type ToolFailureWebhookPayload struct {
 	FailCount      int     `json:"fail_count"`
 	FailureRatePct float64 `json:"failure_rate_pct"`
 	ThresholdPct   float64 `json:"threshold_pct"`
+}
+
+type CostSpikeWebhookPayload struct {
+	Date         string  `json:"date"`
+	TodayCost    float64 `json:"today_cost"`
+	BaselineCost float64 `json:"baseline_cost"`
+	Ratio        float64 `json:"ratio"`
+	Threshold    float64 `json:"threshold_ratio"`
+	LookbackDays int     `json:"lookback_days"`
+}
+
+type UsageRegressionWebhookItem struct {
+	Tool                string  `json:"tool"`
+	RecentCalls         int64   `json:"recent_calls"`
+	RecentFailures      int64   `json:"recent_failures"`
+	RecentFailureRate   float64 `json:"recent_failure_rate"`
+	BaselineCalls       int64   `json:"baseline_calls"`
+	BaselineFailures    int64   `json:"baseline_failures"`
+	BaselineFailureRate float64 `json:"baseline_failure_rate"`
+	Ratio               float64 `json:"ratio"`
+	ThresholdRatio      float64 `json:"threshold_ratio"`
+	MinFailures         int     `json:"min_failures"`
 }
 
 type DaemonWebhookPayload struct {
@@ -144,8 +173,11 @@ func webhookConfigFromUnified(cfg tmconfig.WebhookConfig) WebhookConfig {
 				InitialBackoffSeconds: ep.Retry.InitialBackoffSeconds,
 			},
 			Thresholds: WebhookThresholds{
-				SessionHighCostUSD: ep.Thresholds.SessionHighCostUSD,
-				ToolFailureRatePct: ep.Thresholds.ToolFailureRatePct,
+				SessionHighCostUSD:        ep.Thresholds.SessionHighCostUSD,
+				ToolFailureRatePct:        ep.Thresholds.ToolFailureRatePct,
+				CostSpikeRatio:            ep.Thresholds.CostSpikeRatio,
+				RegressionFailureCountMin: ep.Thresholds.RegressionFailureCountMin,
+				RegressionRatioMin:        ep.Thresholds.RegressionRatioMin,
 			},
 		}
 	}
@@ -237,6 +269,11 @@ func webhookText(payload WebhookPayload) string {
 	case payload.Tool != nil:
 		return fmt.Sprintf("⚠️ TokenMeter: tool '%s' failure rate %.0f%% (%d/%d recent calls)",
 			payload.Tool.ToolName, payload.Tool.FailureRatePct, payload.Tool.FailCount, payload.Tool.CallCount)
+	case payload.CostSpike != nil:
+		return fmt.Sprintf("💸 TokenMeter: daily cost spike %.1fx ($%.2f vs $%.2f baseline)",
+			payload.CostSpike.Ratio, payload.CostSpike.TodayCost, payload.CostSpike.BaselineCost)
+	case len(payload.UsageRegressions) > 0:
+		return fmt.Sprintf("⚠️ TokenMeter: usage regression for %d tool(s)", len(payload.UsageRegressions))
 	case payload.Daemon != nil && payload.Event == webhookEventDaemonLostEvents:
 		return fmt.Sprintf("⚠️ TokenMeter: daemon stopped after dropping %d shutdown events",
 			payload.Daemon.DroppedShutdownEvents)
