@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -35,15 +36,25 @@ func runAnalyze() error {
 			return err
 		}
 	}
-	if opts.toolErrors {
-		report, err := loadToolErrorReport(db, from, to)
-		if err != nil {
-			return err
+	if opts.toolErrors || opts.fileChurn {
+		var toolReport render.ToolErrorReport
+		var fileReport render.FileChurnReport
+		if opts.toolErrors {
+			toolReport, err = loadToolErrorReport(db, from, to)
+			if err != nil {
+				return err
+			}
 		}
-		return render.New().RenderToolErrors(os.Stdout, report, render.Options{
-			JSON:    opts.jsonOutput,
-			Compact: opts.compact,
-		})
+		if opts.fileChurn {
+			fileReport, err = loadFileChurnReport(db, from, to, opts.limit)
+			if err != nil {
+				return err
+			}
+		}
+		if opts.jsonOutput {
+			return renderAnalyzeInsightsJSON(os.Stdout, opts, toolReport, fileReport)
+		}
+		return renderAnalyzeInsightsText(os.Stdout, opts, toolReport, fileReport)
 	}
 	result, err := db.Analyze(from, to)
 	if err != nil {
@@ -60,17 +71,64 @@ func runAnalyze() error {
 	return nil
 }
 
+func renderAnalyzeInsightsJSON(out *os.File, opts analyzeOptions, toolReport render.ToolErrorReport, fileReport render.FileChurnReport) error {
+	payload := map[string]any{}
+	if opts.toolErrors {
+		payload["tool_errors"] = toolReport
+	}
+	if opts.fileChurn {
+		payload["file_churn"] = fileReport
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(payload)
+}
+
+func renderAnalyzeInsightsText(out *os.File, opts analyzeOptions, toolReport render.ToolErrorReport, fileReport render.FileChurnReport) error {
+	r := render.New()
+	if opts.toolErrors {
+		if err := r.RenderToolErrors(out, toolReport, render.Options{Compact: opts.compact}); err != nil {
+			return err
+		}
+		if opts.fileChurn {
+			fmt.Fprintln(out)
+		}
+	}
+	if opts.fileChurn {
+		return r.RenderFileChurn(out, fileReport, render.Options{Compact: opts.compact})
+	}
+	return nil
+}
+
+func loadFileChurnReport(db *storage.DB, from, to time.Time, limit int) (render.FileChurnReport, error) {
+	top, err := db.TopChurnFiles(from, to, limit)
+	if err != nil {
+		return render.FileChurnReport{}, err
+	}
+	hotspots, err := db.ChurnHotspots(from, to, 2, 20)
+	if err != nil {
+		return render.FileChurnReport{}, err
+	}
+	daily, err := db.DailyChurnTrend(from, to)
+	if err != nil {
+		return render.FileChurnReport{}, err
+	}
+	return render.FileChurnReport{TopFiles: top, Hotspots: hotspots, Daily: daily}, nil
+}
+
 type analyzeOptions struct {
 	rangeName  string
 	jsonOutput bool
 	toolErrors bool
+	fileChurn  bool
 	compact    bool
 	since      string
 	until      string
+	limit      int
 }
 
 func parseAnalyzeArgs(args []string) (analyzeOptions, error) {
-	opts := analyzeOptions{rangeName: "month"}
+	opts := analyzeOptions{rangeName: "month", limit: 20}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--range":
@@ -83,6 +141,18 @@ func parseAnalyzeArgs(args []string) (analyzeOptions, error) {
 			opts.jsonOutput = true
 		case "--tool-errors":
 			opts.toolErrors = true
+		case "--file-churn":
+			opts.fileChurn = true
+		case "--limit":
+			if i+1 >= len(args) {
+				return opts, fmt.Errorf("--limit requires a value")
+			}
+			limit, err := strconv.Atoi(args[i+1])
+			if err != nil || limit <= 0 {
+				return opts, fmt.Errorf("--limit must be a positive integer")
+			}
+			opts.limit = limit
+			i++
 		case "--compact":
 			opts.compact = true
 		case "--since":

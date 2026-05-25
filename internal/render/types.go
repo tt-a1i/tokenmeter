@@ -90,6 +90,7 @@ type Renderer interface {
 	RenderSessions(w io.Writer, rows []SessionRow, opts Options) error
 	RenderBlocks(w io.Writer, rows []BlockRow, opts Options) error
 	RenderToolErrors(w io.Writer, report ToolErrorReport, opts Options) error
+	RenderFileChurn(w io.Writer, report FileChurnReport, opts Options) error
 }
 
 // New returns a Renderer that dispatches to either boxed-table or JSON

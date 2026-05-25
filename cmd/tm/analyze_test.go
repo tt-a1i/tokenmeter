@@ -146,6 +146,100 @@ func TestRunAnalyzeToolErrorsTextIncludesSections(t *testing.T) {
 	}
 }
 
+func TestRunAnalyzeFileChurnJSONFormat(t *testing.T) {
+	home := t.TempDir()
+	db := openHomeDB(t, home)
+	now := time.Now().Add(-24 * time.Hour)
+	seedAnalyzeCLISession(t, db, "file-churn-json", event.PlatformClaude, now, "sonnet", 2.5, "internal/storage/db.go")
+	for i := 0; i < 3; i++ {
+		if err := db.InsertFileChange("file-churn-json", "internal/storage/db.go", event.FileEdit, now.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatalf("insert file change: %v", err)
+		}
+	}
+
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--file-churn", "--limit", "1", "--json"})
+	out := captureStdout(t, func() {
+		if err := runAnalyze(); err != nil {
+			t.Fatalf("runAnalyze: %v", err)
+		}
+	})
+
+	var payload struct {
+		FileChurn struct {
+			TopFiles []struct {
+				Path string `json:"path"`
+			} `json:"top_files"`
+			Hotspots []struct {
+				Path string `json:"path"`
+			} `json:"hotspots"`
+			Daily []struct {
+				Changes int64 `json:"changes"`
+			} `json:"daily"`
+		} `json:"file_churn"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("invalid file churn json: %v\n%s", err, out)
+	}
+	if len(payload.FileChurn.TopFiles) != 1 || payload.FileChurn.TopFiles[0].Path != "internal/storage/db.go" {
+		t.Fatalf("unexpected top files: %+v", payload.FileChurn.TopFiles)
+	}
+	if len(payload.FileChurn.Hotspots) == 0 || payload.FileChurn.Hotspots[0].Path != "internal/storage" {
+		t.Fatalf("unexpected hotspots: %+v", payload.FileChurn.Hotspots)
+	}
+	if len(payload.FileChurn.Daily) == 0 {
+		t.Fatalf("expected daily churn series")
+	}
+}
+
+func TestRunAnalyzeToolErrorsAndFileChurnJSONFormat(t *testing.T) {
+	home := t.TempDir()
+	db := openHomeDB(t, home)
+	now := time.Now().Add(-24 * time.Hour)
+	seedAnalyzeCLISession(t, db, "combined-json", event.PlatformClaude, now, "sonnet", 2.5, "cmd/tm/analyze.go")
+	for i := 0; i < 3; i++ {
+		callID := "combined-fail-" + string(rune('a'+i))
+		if _, err := db.InsertToolCallStart(callID, "agent-combined-json", "combined-json", "Bash", "{}", now.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatalf("insert fail start: %v", err)
+		}
+		if err := db.UpdateToolCallEnd(callID, "exit code 1", event.StatusFail, 50, now.Add(time.Duration(i)*time.Hour+time.Second)); err != nil {
+			t.Fatalf("insert fail end: %v", err)
+		}
+	}
+
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--file-churn", "--json"})
+	out := captureStdout(t, func() {
+		if err := runAnalyze(); err != nil {
+			t.Fatalf("runAnalyze: %v", err)
+		}
+	})
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("invalid combined json: %v\n%s", err, out)
+	}
+	if len(payload["tool_errors"]) == 0 || len(payload["file_churn"]) == 0 {
+		t.Fatalf("expected both envelopes, got keys: %+v", payload)
+	}
+}
+
+func TestRunAnalyzeFileChurnTextIncludesSections(t *testing.T) {
+	home := t.TempDir()
+	db := openHomeDB(t, home)
+	now := time.Now().Add(-24 * time.Hour)
+	seedAnalyzeCLISession(t, db, "file-churn-text", event.PlatformClaude, now, "sonnet", 2.5, "cmd/tm/analyze.go")
+
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--file-churn"})
+	out := captureStdout(t, func() {
+		if err := runAnalyze(); err != nil {
+			t.Fatalf("runAnalyze: %v", err)
+		}
+	})
+	for _, want := range []string{"Top Changed Files", "File Churn Hotspots", "Daily file changes", "cmd/tm/analyze.go"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("file churn output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func seedAnalyzeCLISession(t *testing.T, db interface {
 	UpsertSession(string, event.Platform, time.Time) error
 	UpdateSessionMeta(string, string, string) error
