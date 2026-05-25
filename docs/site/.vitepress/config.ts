@@ -17,6 +17,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'Sources', link: '/sources/' },
       { text: 'Configuration', link: '/configuration/environment-variables' },
+      { text: 'Changelog', link: '/changelog/v1.2.0' },
       { text: 'GitHub', link: 'https://github.com/tt-a1i/tokenmeter' }
     ],
     sidebar: [
@@ -66,6 +67,12 @@ export default defineConfig({
         text: 'Integration',
         items: [
           { text: 'Claude Hooks', link: '/integration/claude-hooks' }
+        ]
+      },
+      {
+        text: 'Changelog',
+        items: [
+          { text: 'v1.2.0', link: '/changelog/v1.2.0' }
         ]
       }
     ],
