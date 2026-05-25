@@ -26,6 +26,8 @@ export default defineConfig({
           { text: 'Getting Started', link: '/guide/getting-started' },
           { text: 'Installation', link: '/guide/installation' },
           { text: 'CLI Reference', link: '/guide/cli-reference' },
+          { text: 'JSON Output', link: '/guide/json-output' },
+          { text: 'Blocks and Statusline', link: '/guide/blocks-and-statusline' },
           { text: 'Migrating to v1', link: '/guide/migration-v1' }
         ]
       },
@@ -35,13 +37,26 @@ export default defineConfig({
           { text: 'Source Index', link: '/sources/' },
           { text: 'Claude Code', link: '/sources/claude' },
           { text: 'Codex', link: '/sources/codex' },
-          { text: 'OpenCode', link: '/sources/opencode' }
+          { text: 'OpenCode', link: '/sources/opencode' },
+          { text: 'Amp', link: '/sources/amp' },
+          { text: 'Droid', link: '/sources/droid' },
+          { text: 'Codebuff', link: '/sources/codebuff' },
+          { text: 'Hermes', link: '/sources/hermes' },
+          { text: 'pi-agent', link: '/sources/pi' },
+          { text: 'Goose', link: '/sources/goose' },
+          { text: 'Kilo', link: '/sources/kilo' },
+          { text: 'Kimi', link: '/sources/kimi' },
+          { text: 'OpenClaw', link: '/sources/openclaw' },
+          { text: 'Qwen', link: '/sources/qwen' },
+          { text: 'GitHub Copilot CLI', link: '/sources/copilot' },
+          { text: 'Gemini CLI', link: '/sources/gemini' }
         ]
       },
       {
         text: 'Configuration',
         items: [
           { text: 'Environment Variables', link: '/configuration/environment-variables' },
+          { text: 'Unified Config', link: '/configuration/unified-config' },
           { text: 'Statusline', link: '/configuration/statusline' },
           { text: 'Budgets', link: '/configuration/budgets' },
           { text: 'Webhooks', link: '/configuration/webhooks' }

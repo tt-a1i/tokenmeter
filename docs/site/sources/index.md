@@ -22,23 +22,23 @@ tm qwen monthly --json
 
 ## Supported Sources
 
-| Source | Command | Default data location or override |
-| --- | --- | --- |
-| Claude Code | built-in SQLite path | Hooks plus `~/.claude/projects/` JSONL logs. |
-| Codex | built-in SQLite path | `~/.codex/sessions` and archived sessions. |
-| OpenCode | `tm opencode` | `OPENCODE_DATA_DIR` or `~/.local/share/opencode`. |
-| Amp | `tm amp` | `AMP_DATA_DIR` or `~/.local/share/amp`. |
-| Gemini CLI | `tm gemini` | `GEMINI_DATA_DIR` or `~/.gemini/tmp`. |
-| GitHub Copilot CLI | `tm copilot` | `COPILOT_OTEL_FILE_EXPORTER_PATH`. |
-| Goose | `tm goose` | `GOOSE_PATH_ROOT` or standard Goose data roots. |
-| Codebuff | `tm codebuff` | `CODEBUFF_DATA_DIR` or channel config roots. |
-| Hermes Agent | `tm hermes` | `HERMES_HOME` or `~/.hermes`. |
-| Kilo | `tm kilo` | `KILO_DATA_DIR` or `~/.local/share/kilo`. |
-| Kimi | `tm kimi` | `KIMI_DATA_DIR` or `~/.kimi`. |
-| OpenClaw | `tm openclaw` | `OPENCLAW_DIR` or OpenClaw-compatible roots. |
-| pi-agent | `tm pi` | `PI_AGENT_DIR` or `~/.pi/agent/sessions`. |
-| Droid | `tm droid` | `DROID_SESSIONS_DIR` or `~/.factory/sessions`. |
-| Qwen | `tm qwen` | `QWEN_DATA_DIR` or `~/.qwen`. |
+| Source | Command | Shape | Summary |
+| --- | --- | --- | --- |
+| [Claude Code](./claude.md) | built-in SQLite path | JSONL + SQLite | Hook events plus `~/.claude/projects/` transcripts for Claude Code usage. |
+| [Codex](./codex.md) | built-in SQLite path | JSONL + SQLite | Local Codex session files and TokenMeter daemon rows. |
+| [OpenCode](./opencode.md) | `tm opencode` | SQLite + JSON | `OPENCODE_DATA_DIR` or `~/.local/share/opencode`, including `opencode.db`. |
+| [Amp](./amp.md) | `tm amp` | JSON | `AMP_DATA_DIR` or `~/.local/share/amp/threads/*.json`. |
+| [Gemini CLI](./gemini.md) | `tm gemini` | JSON / JSONL | `GEMINI_DATA_DIR` or `~/.gemini/tmp` local Gemini usage files. |
+| [GitHub Copilot CLI](./copilot.md) | `tm copilot` | OTEL JSONL | `COPILOT_OTEL_FILE_EXPORTER_PATH` points at the exported telemetry file. |
+| [Goose](./goose.md) | `tm goose` | SQLite | `GOOSE_PATH_ROOT` or standard Goose roots containing `sessions.db`. |
+| [Codebuff](./codebuff.md) | `tm codebuff` | JSON | `CODEBUFF_DATA_DIR` or channel roots with `chat-messages.json`. |
+| [Hermes Agent](./hermes.md) | `tm hermes` | SQLite | `HERMES_HOME` or `~/.hermes` state database. |
+| [Kilo](./kilo.md) | `tm kilo` | SQLite | `KILO_DATA_DIR` or `~/.local/share/kilo/kilo.db`. |
+| [Kimi](./kimi.md) | `tm kimi` | JSONL + JSON | `KIMI_DATA_DIR` or `~/.kimi/sessions/**/wire.jsonl`, plus optional config. |
+| [OpenClaw](./openclaw.md) | `tm openclaw` | JSONL | `OPENCLAW_DIR` or compatible roots with normal, deleted, and reset JSONL files. |
+| [pi-agent](./pi.md) | `tm pi` | JSONL | `PI_AGENT_DIR` or `~/.pi/agent/sessions/**/*.jsonl`. |
+| [Droid](./droid.md) | `tm droid` | JSON + JSONL | `DROID_SESSIONS_DIR` or `~/.factory/sessions`, including sidecar JSONL model fallback. |
+| [Qwen](./qwen.md) | `tm qwen` | JSONL | `QWEN_DATA_DIR` or `~/.qwen/projects/*/chats/*.jsonl`. |
 
 ## What A Source Must Provide
 
@@ -78,8 +78,20 @@ If a source has multiple local roots, prefer comma-separated env vars where the 
 
 ## Pages In This Section
 
-The first detailed source pages cover Claude Code, Codex, and OpenCode.
+Every supported source has a dedicated page.
 
-Additional source pages will be added incrementally.
+Start with the page for the adapter you are debugging.
 
-For now, use this index as the supported source matrix.
+Each page lists the default data location.
+
+Each page lists the environment override.
+
+Each page lists the file format.
+
+Each page points to the TokenMeter collector implementation.
+
+Each page includes command examples.
+
+Each page includes troubleshooting notes.
+
+Use the shape column above to identify whether a source is file-based, SQLite-based, or OTEL-based.
