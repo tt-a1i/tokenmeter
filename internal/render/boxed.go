@@ -24,6 +24,7 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 	t := table.NewWriter()
 	t.SetOutputMirror(w)
 	t.SetStyle(table.StyleRounded)
+	compact := compactLayout(w, opts)
 
 	firstCol := "Date"
 	switch kind {
@@ -32,7 +33,11 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 	case "monthly":
 		firstCol = "Month"
 	}
-	t.AppendHeader(table.Row{firstCol, "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost"})
+	if compact {
+		t.AppendHeader(table.Row{firstCol, "Input", "Output", "Cache", "Total", "Cost"})
+	} else {
+		t.AppendHeader(table.Row{firstCol, "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost"})
+	}
 
 	colorize := func(c text.Color, s string) string {
 		if !opts.Color {
@@ -44,24 +49,44 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 	var sumIn, sumOut, sumCC, sumCR, sumTotal int64
 	var sumCost float64
 	for _, r := range rows {
-		t.AppendRow(table.Row{
-			r.Bucket,
-			colorize(text.FgCyan, joinList(r.Models)),
-			colorize(text.FgYellow, fmtInt(r.InputTokens)),
-			colorize(text.FgYellow, fmtInt(r.OutputTokens)),
-			colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
-			colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
-			colorize(text.FgYellow, fmtInt(r.TotalTokens)),
-			colorize(text.FgRed, fmtCost(r.Cost)),
-		})
+		if compact {
+			t.AppendRow(table.Row{
+				r.Bucket,
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+			})
+		} else {
+			t.AppendRow(table.Row{
+				r.Bucket,
+				colorize(text.FgCyan, joinList(r.Models)),
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+			})
+		}
 		if opts.Breakdown {
 			for _, b := range r.Breakdown {
-				t.AppendRow(table.Row{
-					"└─ " + b.Model, "",
-					fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
-					fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
-					fmtInt(b.TotalTokens), fmtCost(b.Cost),
-				})
+				if compact {
+					t.AppendRow(table.Row{
+						"└─ " + b.Model,
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost),
+					})
+				} else {
+					t.AppendRow(table.Row{
+						"└─ " + b.Model, "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost),
+					})
+				}
 			}
 		}
 		sumIn += r.InputTokens
@@ -72,12 +97,21 @@ func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []Aggreg
 		sumCost += r.Cost
 	}
 	t.AppendSeparator()
-	t.AppendFooter(table.Row{
-		"TOTAL", "",
-		fmtInt(sumIn), fmtInt(sumOut),
-		fmtInt(sumCC), fmtInt(sumCR),
-		fmtInt(sumTotal), fmtCost(sumCost),
-	})
+	if compact {
+		t.AppendFooter(table.Row{
+			"TOTAL",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC + sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+		})
+	} else {
+		t.AppendFooter(table.Row{
+			"TOTAL", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC), fmtInt(sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+		})
+	}
 	t.Render()
 	return nil
 }
@@ -101,7 +135,12 @@ func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Opt
 	t := table.NewWriter()
 	t.SetOutputMirror(w)
 	t.SetStyle(table.StyleRounded)
-	t.AppendHeader(table.Row{"Session", "Project", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost"})
+	compact := compactLayout(w, opts)
+	if compact {
+		t.AppendHeader(table.Row{"Session", "Project", "Input", "Output", "Cache", "Total", "Cost"})
+	} else {
+		t.AppendHeader(table.Row{"Session", "Project", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost"})
+	}
 
 	colorize := func(c text.Color, s string) string {
 		if !opts.Color {
@@ -113,25 +152,46 @@ func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Opt
 	var sumIn, sumOut, sumCC, sumCR, sumTotal int64
 	var sumCost float64
 	for _, r := range rows {
-		t.AppendRow(table.Row{
-			r.SessionID,
-			r.ProjectPath,
-			colorize(text.FgCyan, joinList(r.Models)),
-			colorize(text.FgYellow, fmtInt(r.InputTokens)),
-			colorize(text.FgYellow, fmtInt(r.OutputTokens)),
-			colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
-			colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
-			colorize(text.FgYellow, fmtInt(r.TotalTokens)),
-			colorize(text.FgRed, fmtCost(r.Cost)),
-		})
+		if compact {
+			t.AppendRow(table.Row{
+				r.SessionID,
+				r.ProjectPath,
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+			})
+		} else {
+			t.AppendRow(table.Row{
+				r.SessionID,
+				r.ProjectPath,
+				colorize(text.FgCyan, joinList(r.Models)),
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+			})
+		}
 		if opts.Breakdown {
 			for _, b := range r.Breakdown {
-				t.AppendRow(table.Row{
-					"└─ " + b.Model, "", "",
-					fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
-					fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
-					fmtInt(b.TotalTokens), fmtCost(b.Cost),
-				})
+				if compact {
+					t.AppendRow(table.Row{
+						"└─ " + b.Model, "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost),
+					})
+				} else {
+					t.AppendRow(table.Row{
+						"└─ " + b.Model, "", "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost),
+					})
+				}
 			}
 		}
 		sumIn += r.InputTokens
@@ -142,12 +202,21 @@ func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Opt
 		sumCost += r.Cost
 	}
 	t.AppendSeparator()
-	t.AppendFooter(table.Row{
-		"TOTAL", "", "",
-		fmtInt(sumIn), fmtInt(sumOut),
-		fmtInt(sumCC), fmtInt(sumCR),
-		fmtInt(sumTotal), fmtCost(sumCost),
-	})
+	if compact {
+		t.AppendFooter(table.Row{
+			"TOTAL", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC + sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+		})
+	} else {
+		t.AppendFooter(table.Row{
+			"TOTAL", "", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC), fmtInt(sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+		})
+	}
 	t.Render()
 	return nil
 }
@@ -171,7 +240,12 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 	t := table.NewWriter()
 	t.SetOutputMirror(w)
 	t.SetStyle(table.StyleRounded)
-	t.AppendHeader(table.Row{"Period", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Status"})
+	compact := compactLayout(w, opts)
+	if compact {
+		t.AppendHeader(table.Row{"Period", "Input", "Output", "Cache", "Total", "Cost", "Status"})
+	} else {
+		t.AppendHeader(table.Row{"Period", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Status"})
+	}
 
 	colorize := func(c text.Color, s string) string {
 		if !opts.Color {
@@ -197,25 +271,46 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 	var sumIn, sumOut, sumCC, sumCR, sumTotal int64
 	var sumCost float64
 	for _, r := range rows {
-		t.AppendRow(table.Row{
-			r.Period,
-			colorize(text.FgCyan, joinList(r.Models)),
-			colorize(text.FgYellow, fmtInt(r.InputTokens)),
-			colorize(text.FgYellow, fmtInt(r.OutputTokens)),
-			colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
-			colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
-			colorize(text.FgYellow, fmtInt(r.TotalTokens)),
-			colorize(text.FgRed, fmtCost(r.Cost)),
-			colorizeStatus(r.Status),
-		})
+		if compact {
+			t.AppendRow(table.Row{
+				r.Period,
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+				colorizeStatus(r.Status),
+			})
+		} else {
+			t.AppendRow(table.Row{
+				r.Period,
+				colorize(text.FgCyan, joinList(r.Models)),
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+				colorizeStatus(r.Status),
+			})
+		}
 		if opts.Breakdown {
 			for _, b := range r.Breakdown {
-				t.AppendRow(table.Row{
-					"  └─ " + b.Model, "",
-					fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
-					fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
-					fmtInt(b.TotalTokens), fmtCost(b.Cost), "",
-				})
+				if compact {
+					t.AppendRow(table.Row{
+						"  └─ " + b.Model,
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost), "",
+					})
+				} else {
+					t.AppendRow(table.Row{
+						"  └─ " + b.Model, "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost), "",
+					})
+				}
 			}
 		}
 		sumIn += r.InputTokens
@@ -226,13 +321,23 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 		sumCost += r.Cost
 	}
 	t.AppendSeparator()
-	t.AppendFooter(table.Row{
-		"TOTAL", "",
-		fmtInt(sumIn), fmtInt(sumOut),
-		fmtInt(sumCC), fmtInt(sumCR),
-		fmtInt(sumTotal), fmtCost(sumCost),
-		"",
-	})
+	if compact {
+		t.AppendFooter(table.Row{
+			"TOTAL",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC + sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+			"",
+		})
+	} else {
+		t.AppendFooter(table.Row{
+			"TOTAL", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC), fmtInt(sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+			"",
+		})
+	}
 	t.Render()
 	return nil
 }
