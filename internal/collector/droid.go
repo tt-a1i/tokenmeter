@@ -206,10 +206,10 @@ func readDroidSettings(path string) (UsageEntry, bool) {
 
 	model := normalizeDroidModelName(raw.Model)
 	if model == "" {
-		// Sidecar JSONL lookup (ccusage extract_model_from_sidecar_jsonl)
-		// is a v1.1.1 follow-up. Drop the row rather than guessing a
-		// default — pricing would mis-attribute "claude-unknown" rows.
-		return UsageEntry{}, false
+		model = extractDroidModelFromSidecarJSONL(path)
+		if model == "" {
+			return UsageEntry{}, false
+		}
 	}
 
 	ts, ok := droidTimestamp(raw.ProviderLockTimestamp, path)
@@ -280,6 +280,44 @@ func normalizeDroidModelName(model string) string {
 		}
 	}
 	return strings.Trim(out.String(), "-")
+}
+
+func extractDroidModelFromSidecarJSONL(settingsPath string) string {
+	name := filepath.Base(settingsPath)
+	prefix := strings.TrimSuffix(name, droidSettingsExt)
+	if prefix == name {
+		return ""
+	}
+	sidecar := filepath.Join(filepath.Dir(settingsPath), prefix+".jsonl")
+	data, err := os.ReadFile(sidecar)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	if len(lines) > 500 {
+		lines = lines[:500]
+	}
+	for _, line := range lines {
+		if model := extractDroidModelFromSidecarLine(line); model != "" {
+			return model
+		}
+	}
+	return ""
+}
+
+func extractDroidModelFromSidecarLine(line string) string {
+	_, tail, ok := strings.Cut(line, "Model:")
+	if !ok {
+		return ""
+	}
+	parts := strings.FieldsFunc(tail, func(r rune) bool {
+		return r == '"' || r == '\\' || r == '['
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+	raw := strings.TrimSpace(parts[0])
+	return normalizeDroidModelName(raw)
 }
 
 // droidTimestamp prefers providerLockTimestamp (RFC3339) when populated

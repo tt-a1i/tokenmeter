@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -10,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -27,18 +30,12 @@ const (
 //
 // Per-root layout (mirrors ccusage v20's opencode/loader.rs):
 //
+//	<root>/opencode.db                (SQLite message table)
+//	<root>/opencode-<channel>.db      (channel SQLite message tables)
 //	<root>/storage/message/**/*.json  (recursive; one message per file)
-//	<root>/opencode.db                (SQLite path — NOT supported yet, see below)
-//	<root>/opencode-<channel>.db      (channel DB — NOT supported yet)
 //
-// SQLite path is a deliberate v1.1.1 follow-up: it would pull the
-// modernc.org/sqlite driver into the collector package, increasing the
-// dependency surface and a per-process driver init cost. OpenCode CLI
-// writes both stores in parallel (verified in ccusage's
-// prefers_database_messages_over_duplicate_json_files test), so the JSON
-// path covers the typical user; pure-SQLite installs surface as an empty
-// adapter in this release and can fall back to `tm --no-scan` until
-// v1.1.1.
+// SQLite rows are loaded before JSON files so a database message wins when
+// OpenCode writes both stores for the same id.
 //
 // JSON field mapping per ccusage opencode/parser.rs:
 //
@@ -79,6 +76,23 @@ func LoadOpenCodeEntries(_ context.Context, opts AdapterOpts) ([]UsageEntry, err
 	seen := map[string]struct{}{}
 	var entries []UsageEntry
 	for _, root := range roots {
+		for _, dbPath := range discoverOpencodeDBs(root) {
+			for _, dbEntry := range loadOpencodeDBEntries(dbPath) {
+				e, msgID := dbEntry.entry, dbEntry.messageID
+				if !opts.Since.IsZero() && e.Timestamp.Before(opts.Since) {
+					continue
+				}
+				if !opts.Until.IsZero() && e.Timestamp.After(opts.Until) {
+					continue
+				}
+				key := opencodeDedupKey(e, msgID, dbPath)
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				entries = append(entries, e)
+			}
+		}
 		messagesDir := filepath.Join(root, opencodeStorageDir, opencodeMessagesDir)
 		files := discoverOpencodeMessageFiles(messagesDir)
 		for _, f := range files {
@@ -144,6 +158,84 @@ func opencodeRoots() []string {
 	return roots
 }
 
+func discoverOpencodeDBs(root string) []string {
+	var out []string
+	defaultPath := filepath.Join(root, "opencode.db")
+	if isFile(defaultPath) {
+		out = append(out, defaultPath)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return out
+	}
+	var channelDBs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !isOpencodeChannelDBName(name) {
+			continue
+		}
+		channelDBs = append(channelDBs, filepath.Join(root, name))
+	}
+	sort.Strings(channelDBs)
+	return append(out, channelDBs...)
+}
+
+func isOpencodeChannelDBName(name string) bool {
+	if !strings.HasPrefix(name, "opencode-") || !strings.HasSuffix(name, ".db") {
+		return false
+	}
+	channel := strings.TrimSuffix(strings.TrimPrefix(name, "opencode-"), ".db")
+	if channel == "" {
+		return false
+	}
+	for _, ch := range channel {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isFile(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
+}
+
+type opencodeDBEntry struct {
+	entry     UsageEntry
+	messageID string
+}
+
+func loadOpencodeDBEntries(path string) []opencodeDBEntry {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT id, session_id, data FROM message`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []opencodeDBEntry
+	for rows.Next() {
+		var id, sessionID, data string
+		if err := rows.Scan(&id, &sessionID, &data); err != nil {
+			continue
+		}
+		e, msgID, ok := parseOpencodeMessageData([]byte(data), id, sessionID)
+		if !ok {
+			continue
+		}
+		out = append(out, opencodeDBEntry{entry: e, messageID: msgID})
+	}
+	return out
+}
+
 // discoverOpencodeMessageFiles recursively collects every *.json file
 // under messagesDir. Order is sorted for stable dedup across runs.
 func discoverOpencodeMessageFiles(messagesDir string) []string {
@@ -179,6 +271,11 @@ func readOpencodeMessage(path string) (UsageEntry, string, bool, error) {
 	if err != nil {
 		return UsageEntry{}, "", false, err
 	}
+	e, msgID, ok := parseOpencodeMessageData(data, "", "")
+	return e, msgID, ok, nil
+}
+
+func parseOpencodeMessageData(data []byte, fallbackID, fallbackSessionID string) (UsageEntry, string, bool) {
 	var raw struct {
 		ID         string `json:"id"`
 		SessionID  string `json:"sessionID"`
@@ -199,12 +296,12 @@ func readOpencodeMessage(path string) (UsageEntry, string, bool, error) {
 		Cost float64 `json:"cost"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return UsageEntry{}, "", false, nil
+		return UsageEntry{}, "", false
 	}
 	if strings.TrimSpace(raw.ModelID) == "" {
 		// ccusage parser drops rows without modelID; OpenCode emits
 		// user-message files with no tokens/model at all.
-		return UsageEntry{}, "", false, nil
+		return UsageEntry{}, "", false
 	}
 	in, out := raw.Tokens.Input, raw.Tokens.Output
 	cc, cr := raw.Tokens.Cache.Write, raw.Tokens.Cache.Read
@@ -214,10 +311,17 @@ func readOpencodeMessage(path string) (UsageEntry, string, bool, error) {
 			// the output bucket so the row still surfaces non-zero usage.
 			out = raw.Tokens.Total
 		} else {
-			return UsageEntry{}, "", false, nil
+			return UsageEntry{}, "", false
 		}
 	}
+	msgID := raw.ID
+	if msgID == "" {
+		msgID = fallbackID
+	}
 	sessionID := raw.SessionID
+	if sessionID == "" {
+		sessionID = fallbackSessionID
+	}
 	if sessionID == "" {
 		sessionID = opencodeUnknownSession
 	}
@@ -233,7 +337,7 @@ func readOpencodeMessage(path string) (UsageEntry, string, bool, error) {
 		CacheCreationInputTokens: cc,
 		CacheReadInputTokens:     cr,
 		CostUSD:                  opencodePositiveCost(raw.Cost),
-	}, raw.ID, true, nil
+	}, msgID, true
 }
 
 // opencodePositiveCost mirrors ccusage's "use stored cost when > 0,

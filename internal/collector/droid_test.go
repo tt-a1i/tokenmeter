@@ -150,6 +150,79 @@ func TestLoadDroidEntriesModelNameNormalization(t *testing.T) {
 	}
 }
 
+func TestLoadDroidEntriesUsesSettingsModelBeforeSidecar(t *testing.T) {
+	dir := t.TempDir()
+	writeDroidSettings(t, dir, "settings-wins", `"Claude-Sonnet-4-[Anthropic]"`)
+	if err := os.WriteFile(filepath.Join(dir, "settings-wins.jsonl"), []byte(`{"text":"Model: gpt-5-codex"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+	t.Setenv("DROID_SESSIONS_DIR", dir)
+
+	entries, err := collector.LoadDroidEntries(context.Background(), collector.AdapterOpts{})
+	if err != nil {
+		t.Fatalf("LoadDroidEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d: %+v", len(entries), entries)
+	}
+	if entries[0].Model != "claude-sonnet-4" {
+		t.Fatalf("Model=%q want settings model claude-sonnet-4", entries[0].Model)
+	}
+}
+
+func TestLoadDroidEntriesUsesSidecarModelWhenSettingsModelMissing(t *testing.T) {
+	dir := t.TempDir()
+	writeDroidSettings(t, dir, "sidecar", "")
+	if err := os.WriteFile(filepath.Join(dir, "sidecar.jsonl"), []byte("prefix Model: GPT-5 Codex [OpenAI] \\\"tail\n"), 0o600); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+	t.Setenv("DROID_SESSIONS_DIR", dir)
+
+	entries, err := collector.LoadDroidEntries(context.Background(), collector.AdapterOpts{})
+	if err != nil {
+		t.Fatalf("LoadDroidEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected sidecar-backed entry, got %d: %+v", len(entries), entries)
+	}
+	if entries[0].Model != "gpt-5-codex" {
+		t.Fatalf("Model=%q want sidecar model gpt-5-codex", entries[0].Model)
+	}
+}
+
+func TestLoadDroidEntriesDropsRowWhenSettingsAndSidecarModelMissing(t *testing.T) {
+	dir := t.TempDir()
+	writeDroidSettings(t, dir, "missing", "")
+	if err := os.WriteFile(filepath.Join(dir, "missing.jsonl"), []byte(`{"text":"no model here"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+	t.Setenv("DROID_SESSIONS_DIR", dir)
+
+	entries, err := collector.LoadDroidEntries(context.Background(), collector.AdapterOpts{})
+	if err != nil {
+		t.Fatalf("LoadDroidEntries: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected row to be dropped without settings or sidecar model, got %+v", entries)
+	}
+}
+
+func writeDroidSettings(t *testing.T, dir, sessionID, modelJSON string) {
+	t.Helper()
+	modelField := ""
+	if modelJSON != "" {
+		modelField = `"model": ` + modelJSON + `,`
+	}
+	content := `{
+		` + modelField + `
+		"providerLockTimestamp": "2026-05-01T00:00:00.000Z",
+		"tokenUsage": {"inputTokens": 1, "outputTokens": 2}
+	}`
+	if err := os.WriteFile(filepath.Join(dir, sessionID+".settings.json"), []byte(content), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+}
+
 // jsonEncodeStringField returns a JSON-quoted form of s suitable for
 // inline assembly into a JSON object literal. Used only by the
 // normalization subtest; saves importing encoding/json into the test
