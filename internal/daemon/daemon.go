@@ -39,6 +39,7 @@ type Daemon struct {
 
 	budgetLastStatus     map[int64]string
 	toolFailureLastAlert map[string]float64
+	anomalyLastAlert     map[string]time.Time
 
 	// Observability counters. Atomic so callers/inspectors don't need the
 	// daemon mutex. Currently logged at Stop(); a future /metrics endpoint
@@ -61,6 +62,7 @@ func New(db *storage.DB, sockPath string) *Daemon {
 		webhookQueue:         make(chan webhookDelivery, 1024),
 		budgetLastStatus:     make(map[int64]string),
 		toolFailureLastAlert: make(map[string]float64),
+		anomalyLastAlert:     make(map[string]time.Time),
 	}
 }
 

@@ -126,8 +126,12 @@ func applyConfigDefaults(s *Shared, command string, args []string) error {
 	d := cfg.EffectiveDefaults(command)
 	s.Since = d.Since
 	s.Until = d.Until
-	s.JSON = d.JSON
-	s.Offline = d.Offline
+	if d.JSON != nil {
+		s.JSON = *d.JSON
+	}
+	if d.Offline != nil {
+		s.Offline = *d.Offline
+	}
 	s.Timezone = d.Timezone
 	if d.Mode != "" {
 		s.Mode = d.Mode
@@ -135,13 +139,19 @@ func applyConfigDefaults(s *Shared, command string, args []string) error {
 	if d.Order != "" {
 		s.Order = d.Order
 	}
-	s.Breakdown = d.Breakdown
+	if d.Breakdown != nil {
+		s.Breakdown = *d.Breakdown
+	}
 	s.Project = d.Project
-	s.NoColor = d.NoColor
+	if d.NoColor != nil {
+		s.NoColor = *d.NoColor
+	}
 	if d.Speed != "" {
 		s.Speed = d.Speed
 	}
-	s.Compact = d.Compact
+	if d.Compact != nil {
+		s.Compact = *d.Compact
+	}
 	s.TokenLimit = d.TokenLimit
 	return nil
 }

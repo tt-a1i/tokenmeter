@@ -104,6 +104,25 @@ func TestLoadWebhookConfigUnifiedAnomalyThresholds(t *testing.T) {
 	}
 }
 
+func TestLoadWebhookConfigUnifiedAnomalyCooldown(t *testing.T) {
+	base := setWebhookTestHome(t)
+	path := filepath.Join(base, "config.json")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"webhooks":{"anomaly_cooldown":{"cost_spike_hours":12,"usage_regression_minutes":30},"endpoints":[{"url":"https://example.test/anomaly","events":["cost_spike"],"format":"json"}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadWebhookConfig()
+	if err != nil {
+		t.Fatalf("LoadWebhookConfig: %v", err)
+	}
+	if cfg.AnomalyCooldown.CostSpikeHours != 12 || cfg.AnomalyCooldown.UsageRegressionMinutes != 30 {
+		t.Fatalf("anomaly cooldown not loaded: %+v", cfg.AnomalyCooldown)
+	}
+}
+
 func TestPostWebhookSlackFormat(t *testing.T) {
 	var got map[string]string
 	srv := captureWebhookServer(t, &got)

@@ -99,6 +99,20 @@ func TestParseSharedUsesCommandOverrides(t *testing.T) {
 	}
 }
 
+func TestParseSharedCommandFalseOverridesConfigDefaultTrue(t *testing.T) {
+	path := writeCLIConfig(t, `{"defaults":{"breakdown":true,"offline":true},"commands":{"daily":{"breakdown":false}}}`)
+	got, _, err := cli.ParseSharedForCommand("daily", []string{"--config", path})
+	if err != nil {
+		t.Fatalf("ParseSharedForCommand: %v", err)
+	}
+	if got.Breakdown {
+		t.Fatalf("commands.daily.breakdown=false should override default true: %+v", got)
+	}
+	if !got.Offline {
+		t.Fatalf("unset command offline should inherit default true: %+v", got)
+	}
+}
+
 func TestParseSharedCLIOverridesConfig(t *testing.T) {
 	path := writeCLIConfig(t, `{"defaults":{"offline":true,"order":"asc","speed":"standard"},"commands":{"daily":{"order":"desc"}}}`)
 	got, _, err := cli.ParseSharedForCommand("daily", []string{"--config", path, "--order", "asc", "--speed", "fast", "--offline=false"})

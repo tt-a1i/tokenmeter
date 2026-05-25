@@ -26,16 +26,16 @@ type Config struct {
 type Defaults struct {
 	Since      string `json:"since,omitempty"`
 	Until      string `json:"until,omitempty"`
-	JSON       bool   `json:"json,omitempty"`
-	Offline    bool   `json:"offline,omitempty"`
+	JSON       *bool  `json:"json,omitempty"`
+	Offline    *bool  `json:"offline,omitempty"`
 	Timezone   string `json:"timezone,omitempty"`
 	Mode       string `json:"mode,omitempty"`
 	Order      string `json:"order,omitempty"`
-	Breakdown  bool   `json:"breakdown,omitempty"`
+	Breakdown  *bool  `json:"breakdown,omitempty"`
 	Project    string `json:"project,omitempty"`
-	NoColor    bool   `json:"noColor,omitempty"`
+	NoColor    *bool  `json:"noColor,omitempty"`
 	Speed      string `json:"speed,omitempty"`
-	Compact    bool   `json:"compact,omitempty"`
+	Compact    *bool  `json:"compact,omitempty"`
 	TokenLimit string `json:"token_limit,omitempty"`
 }
 
@@ -72,7 +72,13 @@ type PricingRule struct {
 }
 
 type WebhookConfig struct {
-	Endpoints []EndpointConfig `json:"endpoints,omitempty"`
+	AnomalyCooldown AnomalyCooldownConfig `json:"anomaly_cooldown,omitempty"`
+	Endpoints       []EndpointConfig      `json:"endpoints,omitempty"`
+}
+
+type AnomalyCooldownConfig struct {
+	CostSpikeHours         int `json:"cost_spike_hours,omitempty"`
+	UsageRegressionMinutes int `json:"usage_regression_minutes,omitempty"`
 }
 
 type EndpointConfig struct {
@@ -175,14 +181,22 @@ func Example() *Config {
 	return &Config{
 		Schema: "https://tokenmeter.dev/config-schema.json",
 		Defaults: Defaults{
-			Mode:     "auto",
-			Order:    "asc",
-			Timezone: "UTC",
+			Mode:      "auto",
+			Order:     "asc",
+			Timezone:  "UTC",
+			Offline:   Bool(false),
+			Breakdown: Bool(false),
+			NoColor:   Bool(false),
+			Compact:   Bool(false),
 		},
 		Pricing: PricingConfig{
 			CacheTTLHours: 24,
 		},
 		Webhooks: WebhookConfig{
+			AnomalyCooldown: AnomalyCooldownConfig{
+				CostSpikeHours:          24,
+				UsageRegressionMinutes: 60,
+			},
 			Endpoints: []EndpointConfig{},
 		},
 	}
@@ -214,6 +228,21 @@ func (c *Config) EffectiveDefaults(command string) Defaults {
 	return out
 }
 
+func Bool(v bool) *bool {
+	return &v
+}
+
+func BoolValue(v *bool) bool {
+	return v != nil && *v
+}
+
+func cloneBool(v *bool) *bool {
+	if v == nil {
+		return nil
+	}
+	return Bool(*v)
+}
+
 func mergeDefaults(dst *Defaults, src Defaults) {
 	if src.Since != "" {
 		dst.Since = src.Since
@@ -221,11 +250,11 @@ func mergeDefaults(dst *Defaults, src Defaults) {
 	if src.Until != "" {
 		dst.Until = src.Until
 	}
-	if src.JSON {
-		dst.JSON = true
+	if src.JSON != nil {
+		dst.JSON = cloneBool(src.JSON)
 	}
-	if src.Offline {
-		dst.Offline = true
+	if src.Offline != nil {
+		dst.Offline = cloneBool(src.Offline)
 	}
 	if src.Timezone != "" {
 		dst.Timezone = src.Timezone
@@ -236,20 +265,20 @@ func mergeDefaults(dst *Defaults, src Defaults) {
 	if src.Order != "" {
 		dst.Order = src.Order
 	}
-	if src.Breakdown {
-		dst.Breakdown = true
+	if src.Breakdown != nil {
+		dst.Breakdown = cloneBool(src.Breakdown)
 	}
 	if src.Project != "" {
 		dst.Project = src.Project
 	}
-	if src.NoColor {
-		dst.NoColor = true
+	if src.NoColor != nil {
+		dst.NoColor = cloneBool(src.NoColor)
 	}
 	if src.Speed != "" {
 		dst.Speed = src.Speed
 	}
-	if src.Compact {
-		dst.Compact = true
+	if src.Compact != nil {
+		dst.Compact = cloneBool(src.Compact)
 	}
 	if src.TokenLimit != "" {
 		dst.TokenLimit = src.TokenLimit

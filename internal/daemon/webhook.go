@@ -35,7 +35,13 @@ const (
 var webhookHTTPClient = &http.Client{Timeout: 5 * time.Second}
 
 type WebhookConfig struct {
-	Endpoints []EndpointConfig `json:"endpoints"`
+	AnomalyCooldown AnomalyCooldownConfig `json:"anomaly_cooldown"`
+	Endpoints       []EndpointConfig      `json:"endpoints"`
+}
+
+type AnomalyCooldownConfig struct {
+	CostSpikeHours         int `json:"cost_spike_hours"`
+	UsageRegressionMinutes int `json:"usage_regression_minutes"`
 }
 
 type EndpointConfig struct {
@@ -162,7 +168,13 @@ func loadLegacyWebhookConfigDirect() (*WebhookConfig, error) {
 }
 
 func webhookConfigFromUnified(cfg tmconfig.WebhookConfig) WebhookConfig {
-	out := WebhookConfig{Endpoints: make([]EndpointConfig, len(cfg.Endpoints))}
+	out := WebhookConfig{
+		AnomalyCooldown: AnomalyCooldownConfig{
+			CostSpikeHours:         cfg.AnomalyCooldown.CostSpikeHours,
+			UsageRegressionMinutes: cfg.AnomalyCooldown.UsageRegressionMinutes,
+		},
+		Endpoints: make([]EndpointConfig, len(cfg.Endpoints)),
+	}
 	for i, ep := range cfg.Endpoints {
 		out.Endpoints[i] = EndpointConfig{
 			URL:    ep.URL,

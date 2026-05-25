@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -129,18 +130,54 @@ func TestSaveWritesConfig(t *testing.T) {
 
 func TestEffectiveDefaultsMergesDefaultsAndCommand(t *testing.T) {
 	cfg := &Config{
-		Defaults: Defaults{Offline: true, Order: "asc", Speed: "standard"},
+		Defaults: Defaults{Offline: Bool(true), Order: "asc", Speed: "standard"},
 		Commands: map[string]CommandOverride{
-			"daily": {Breakdown: true, Order: "desc"},
+			"daily": {Breakdown: Bool(true), Order: "desc"},
 		},
 	}
 	got := cfg.EffectiveDefaults("daily")
-	if !got.Offline || !got.Breakdown || got.Order != "desc" || got.Speed != "standard" {
+	if !BoolValue(got.Offline) || !BoolValue(got.Breakdown) || got.Order != "desc" || got.Speed != "standard" {
 		t.Fatalf("effective daily defaults mismatch: %+v", got)
 	}
 	session := cfg.EffectiveDefaults("session")
-	if !session.Offline || session.Breakdown || session.Order != "asc" {
+	if !BoolValue(session.Offline) || BoolValue(session.Breakdown) || session.Order != "asc" {
 		t.Fatalf("effective session defaults mismatch: %+v", session)
+	}
+}
+
+func TestEffectiveDefaultsCommandFalseOverridesDefaultTrue(t *testing.T) {
+	cfg := &Config{
+		Defaults: Defaults{Breakdown: Bool(true), Offline: Bool(true)},
+		Commands: map[string]CommandOverride{
+			"daily": {Breakdown: Bool(false)},
+		},
+	}
+	got := cfg.EffectiveDefaults("daily")
+	if got.Breakdown == nil || *got.Breakdown {
+		t.Fatalf("commands.daily.breakdown=false should override default true: %+v", got)
+	}
+	if !BoolValue(got.Offline) {
+		t.Fatalf("unset command bool should inherit default true: %+v", got)
+	}
+}
+
+func TestDefaultsBoolJSONPreservesNilAndFalse(t *testing.T) {
+	var cfg Config
+	if err := json.Unmarshal([]byte(`{"defaults":{"breakdown":false},"commands":{"daily":{}}}`), &cfg); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if cfg.Defaults.Breakdown == nil || *cfg.Defaults.Breakdown {
+		t.Fatalf("breakdown=false should unmarshal to false pointer: %#v", cfg.Defaults.Breakdown)
+	}
+	if cfg.Commands["daily"].Breakdown != nil {
+		t.Fatalf("unset command breakdown should remain nil: %#v", cfg.Commands["daily"].Breakdown)
+	}
+}
+
+func TestEffectiveDefaultsUnsetBoolsStayNil(t *testing.T) {
+	got := (&Config{Defaults: Defaults{}, Commands: map[string]CommandOverride{"daily": {}}}).EffectiveDefaults("daily")
+	if got.JSON != nil || got.Offline != nil || got.Breakdown != nil || got.NoColor != nil || got.Compact != nil {
+		t.Fatalf("unset bools should stay nil: %+v", got)
 	}
 }
 
