@@ -55,7 +55,7 @@
 
 ### Accurate pricing
 
-- **LiteLLM 运行期定价同步** — `tm pricing refresh` 更新 24 小时缓存，`--offline` 可强制使用本地 fallback。
+- **LiteLLM 运行期定价同步** — `tm pricing refresh` 更新 24 小时缓存；离线报告只使用本地缓存 / embedded fallback。
 - **Codex speed tier** — `--speed auto|standard|fast` 支持 Codex 定价层；`auto` 会读取 `~/.codex/config.toml` 的 `service_tier`。
 - **模型感知估算** — Opus / Sonnet / Haiku / GPT-5 / GPT-4.1 等模型按 token 类型拆分成本。
 
@@ -133,9 +133,8 @@ tm web                                             # 浏览器 dashboard（独�
 ### Offline mode
 
 ```bash
-tm pricing refresh --offline
+tm pricing refresh --offline  # offline mode: exit 1 when no refresh is attempted
 # pricing refresh skipped: offline mode
-# exit code: 1 when no refresh is attempted
 ```
 
 `--offline` 用于确认命令不会联网；它不是 quickstart 的 happy path。
@@ -168,7 +167,7 @@ Copilot CLI、Goose、Codebuff、Hermes、Kilo、Kimi、OpenClaw、pi-agent、Dr
 | `tm budget <subcommand>` | 管理预算 |
 | `tm webhook <subcommand>` | 管理 webhook endpoint |
 | `tm config <show\|path\|init>` | 查看、定位或初始化统一配置 |
-| `tm pricing refresh [--offline]` | 刷新 LiteLLM 运行期定价缓存 |
+| `tm pricing refresh` | 刷新 LiteLLM 运行期定价缓存 |
 | `tm setup` | 配置 Claude Code hooks |
 | `tm uninstall` | 卸载 hooks 并停止 daemon |
 | `tm version` | 显示版本 |

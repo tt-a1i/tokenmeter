@@ -51,7 +51,7 @@
 
 ### Accurate pricing
 
-- **LiteLLM runtime sync** — `tm pricing refresh` updates the 24-hour pricing cache, with `--offline` for local fallback-only runs.
+- **LiteLLM runtime sync** — `tm pricing refresh` updates the 24-hour pricing cache; offline reports use only local cache / embedded fallback.
 - **Codex speed tier** — `--speed auto|standard|fast`; `auto` reads `service_tier` from `~/.codex/config.toml`.
 - **Model-aware estimates** — Opus / Sonnet / Haiku / GPT-5 / GPT-4.1 costs are split by token category.
 
@@ -129,9 +129,8 @@ tm web                                             # browser dashboard (separate
 ### Offline mode
 
 ```bash
-tm pricing refresh --offline
+tm pricing refresh --offline  # offline mode: exit 1 when no refresh is attempted
 # pricing refresh skipped: offline mode
-# exit code: 1 when no refresh is attempted
 ```
 
 Use `--offline` to confirm the command will not reach the network; it is not the quickstart happy path.
@@ -165,7 +164,7 @@ Per-source subcommands and log paths are in [docs/MIGRATION-v1.1.md](docs/MIGRAT
 | `tm budget <subcommand>` | Manage budgets |
 | `tm webhook <subcommand>` | Manage webhook endpoints |
 | `tm config <show\|path\|init>` | Show, locate, or initialize unified config |
-| `tm pricing refresh [--offline]` | Refresh the LiteLLM runtime pricing cache |
+| `tm pricing refresh` | Refresh the LiteLLM runtime pricing cache |
 | `tm setup` | Configure Claude Code hooks |
 | `tm uninstall` | Remove hooks and stop daemon |
 | `tm version` | Show version |

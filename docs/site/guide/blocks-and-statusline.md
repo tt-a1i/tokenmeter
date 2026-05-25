@@ -324,7 +324,7 @@ If the block is empty, confirm the daemon database has rows or scans are enabled
 
 If cost is zero, try `--mode calculate`.
 
-If pricing refresh is not allowed, add `--offline`.
+If network refresh is not allowed, run reports with `--offline`.
 
 If burn rate is noisy, wait until more time has elapsed.
 

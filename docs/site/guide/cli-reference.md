@@ -58,7 +58,7 @@ Some commands manage local configuration files.
 | `tm backup [path]` | Snapshot the database. |
 | `tm restore <path>` | Restore from a snapshot. |
 | `tm reload` | Ask the daemon to reload configuration. |
-| `tm pricing refresh [--offline]` | Refresh the LiteLLM runtime pricing cache, or use fallback-only mode when offline. |
+| `tm pricing refresh` | Refresh the LiteLLM runtime pricing cache. Offline reports use cache / embedded fallback only. |
 | `tm logs [--follow]` | Print daemon or hook logs. |
 | `tm healthcheck [--json]` | Check database and daemon liveness. |
 | `tm emit` | Hook-facing event receiver; normally not run manually. |
