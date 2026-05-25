@@ -40,7 +40,10 @@ Some commands manage local configuration files.
 | Command | Purpose |
 | --- | --- |
 | `tm analyze` | Usage insights and activity analysis. |
-| `tm analyze --tool-errors` | Tool failure pattern analysis grouped by tool, error fragment, and session. |
+| `tm analyze --tool-errors` | Current-project tool failure pattern analysis grouped by tool, error fragment, and session. |
+| `tm analyze --file-churn` | Current-project file churn, directory hotspots, and daily file-change trend. |
+| `tm analyze --tool-errors --all-projects` | Run tool error analysis across the whole database. |
+| `tm analyze --file-churn --project NAME` | Scope file churn to an explicit project name. |
 | `tm search <query>` | Search tool calls and file paths. |
 | `tm compare <a> <b>` | Compare two sessions. |
 | `tm export [opts]` | CSV or JSON export. |
@@ -119,6 +122,21 @@ tm gemini session --json
 | `--context-medium-threshold PCT` | Statusline: context danger threshold percent. |
 | `--burn-rate-display MODE` | Statusline: burn-rate display, one of `off`, `emoji`, `text`, `emoji-text`. |
 | `--no-scan` | Skip batch adapter scans and use only SQLite. |
+
+## Analyze Insight Flags
+
+These flags apply to `tm analyze --tool-errors` and `tm analyze --file-churn`.
+
+| Flag | Meaning |
+| --- | --- |
+| `--all-projects` | Include every project in the local database. |
+| `--project NAME` | Scope tool errors and file churn to a project name. |
+| `--project-aliases JSON\|PATH` | Normalize multiple worktree paths under one project name. |
+| `--limit N` | Limit file churn top-file rows. |
+
+Without `--all-projects` or `--project`, analyze insights default to the current project.
+
+JSON output includes `project_scope` with values such as `current`, `all`, or `explicit:tokenmeter`.
 
 ## Deprecated Aliases
 

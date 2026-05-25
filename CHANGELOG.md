@@ -25,8 +25,8 @@ v1.2.0 turns TokenMeter from a ccusage-aligned local usage reporter into a broad
 
 ### 🚀 Beyond ccusage (4 features)
 
-- **Tool error pattern analysis** — `tm analyze --tool-errors` ranks failing tools, groups repeated error patterns, and shows a daily failure-rate trend sparkline for the last 14 displayed days. ([5ec2cb3](https://github.com/tt-a1i/tokenmeter/commit/5ec2cb3))
-- **File churn heatmap** — `tm analyze --file-churn` reports top changed files with mode breakdown, depth-2 directory hotspots such as `internal/storage`, and a daily file-change sparkline. ([caaa4ce](https://github.com/tt-a1i/tokenmeter/commit/caaa4ce))
+- **Tool error pattern analysis** — `tm analyze --tool-errors` ranks failing tools, groups repeated error patterns, and shows a daily failure-rate trend sparkline for the last 14 displayed days; v1.2 now defaults this view to the current project, with `--all-projects`, `--project NAME`, and `--project-aliases` for explicit scope control. ([5ec2cb3](https://github.com/tt-a1i/tokenmeter/commit/5ec2cb3), [12e8d93](https://github.com/tt-a1i/tokenmeter/commit/12e8d93))
+- **File churn heatmap** — `tm analyze --file-churn` reports top changed files with mode breakdown, depth-2 directory hotspots such as `internal/storage`, and a daily file-change sparkline; it now defaults to current project scope with the same analyze project flags. ([caaa4ce](https://github.com/tt-a1i/tokenmeter/commit/caaa4ce), [12e8d93](https://github.com/tt-a1i/tokenmeter/commit/12e8d93))
 - **Webhook anomaly detection** — `cost_spike` and `usage_regression` events with cooldown controls. ([ae5f4bf](https://github.com/tt-a1i/tokenmeter/commit/ae5f4bf), [4c415ea](https://github.com/tt-a1i/tokenmeter/commit/4c415ea))
 - **FTS5 advanced search query DSL** — `tool:`, `session:`, `cost:`, `tokens:`, `since:`, `until:`, `status:`, and `platform:` filters for `tm search`. ([b6d00ad](https://github.com/tt-a1i/tokenmeter/commit/b6d00ad))
 
@@ -63,7 +63,7 @@ v1.2.0 turns TokenMeter from a ccusage-aligned local usage reporter into a broad
 5. Use `tm pricing refresh` once online to seed the LiteLLM runtime pricing cache.
 6. Try `tm daily --compact` in narrow terminals and `tm blocks --token-limit max` for 5-hour block progress.
 7. Use `tm daily --instances --project-aliases '{"repo":["/path/a","/path/b"]}'` to normalize multiple worktrees.
-8. Use `tm analyze --tool-errors` and `tm analyze --file-churn` to inspect reliability and churn hotspots.
+8. Use `tm analyze --tool-errors` and `tm analyze --file-churn` to inspect current-project reliability and churn hotspots; add `--all-projects` for whole-database release audits.
 9. Update automation that passed `--config` after the command only if you want to standardize on leading global flags; both positions are supported.
 
 ### 📋 Known limitations / follow-up

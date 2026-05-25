@@ -26,6 +26,10 @@ The command reads the local SQLite store.
 
 It uses rows from `tool_calls`.
 
+By default, v1.2 scopes this report to the current project.
+
+Pass `--all-projects` when you want the previous whole-database behavior.
+
 It only needs local data.
 
 It does not call a remote service.
@@ -49,7 +53,7 @@ The default analyze range is the last 30 days.
 Use all available data:
 
 ```bash
-tm analyze --tool-errors --range all
+tm analyze --tool-errors --range all --all-projects
 ```
 
 Use one week:
@@ -103,7 +107,7 @@ tm analyze --tool-errors
 Use all local history:
 
 ```bash
-tm analyze --tool-errors --range all
+tm analyze --tool-errors --range all --all-projects
 ```
 
 Use a fixed window for a release review:
@@ -129,6 +133,56 @@ Combine with file churn in the same command:
 ```bash
 tm analyze --tool-errors --file-churn
 ```
+
+## Project Scope
+
+`tm analyze --tool-errors` defaults to the current project in v1.2.
+
+The current project is resolved from the current working directory.
+
+If project aliases are supplied, the alias resolver can map multiple worktrees to one project name.
+
+The default JSON `project_scope` value is `current`.
+
+Use all projects:
+
+```bash
+tm analyze --tool-errors --all-projects
+```
+
+The JSON `project_scope` value becomes `all`.
+
+Use an explicit project:
+
+```bash
+tm analyze --tool-errors --project tokenmeter
+```
+
+The JSON `project_scope` value becomes `explicit:tokenmeter`.
+
+Use aliases for multi-worktree projects:
+
+```bash
+tm analyze --tool-errors --project tokenmeter --project-aliases '{"tokenmeter":["/repo/tokenmeter","/work/tokenmeter-review"]}'
+```
+
+`--project-aliases` accepts inline JSON.
+
+It also accepts a path to a JSON file.
+
+`--all-projects` cannot be combined with `--project`.
+
+The scope applies to all three report sections.
+
+Top Failing Tools is scoped.
+
+Error Pattern Groups is scoped.
+
+Daily failure rate is scoped.
+
+Use `--all-projects` for release-wide audits across several repositories.
+
+Use the default current-project scope for day-to-day local diagnosis.
 
 `--limit N` is accepted by `tm analyze`.
 
@@ -260,6 +314,7 @@ The shape is:
 ```json
 {
   "tool_errors": {
+    "project_scope": "current",
     "top_tools": [
       {
         "tool": "WebFetch",
@@ -291,6 +346,8 @@ The shape is:
 ```
 
 `top_tools[].tool` is the original tool name.
+
+`project_scope` is `current`, `all`, or `explicit:<name>`.
 
 `top_tools[].total` is the number of calls in range.
 
@@ -444,6 +501,16 @@ Search date filters use `YYYY-MM-DD`.
 
 Those are different command surfaces.
 
+If the report omits rows you expected, check project scope first.
+
+Run again with:
+
+```bash
+tm analyze --tool-errors --all-projects
+```
+
+If that shows the rows, add `--project NAME` or `--project-aliases` to make the intended scope explicit.
+
 If a tool appears unexpectedly, remember that tool names come from captured local events.
 
 They are not normalized across every agent provider.
@@ -455,4 +522,3 @@ Use [Webhook Anomaly Detection](./webhook-anomaly-detection.md) for `usage_regre
 Use [Search Query DSL](./search-query-dsl.md) to inspect failed tool calls.
 
 Use [File Churn](./file-churn.md) when failures are related to repeated edits.
-

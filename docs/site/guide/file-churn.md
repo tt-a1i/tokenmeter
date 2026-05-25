@@ -22,6 +22,10 @@ How has file activity changed over time?
 
 The command reads local daemon-captured file change events.
 
+By default, v1.2 scopes this report to the current project.
+
+Pass `--all-projects` when you want whole-database churn.
+
 It does not inspect Git history.
 
 It does not require a remote repository.
@@ -49,7 +53,7 @@ The default analyze range is the last 30 days.
 Use all available local data:
 
 ```bash
-tm analyze --file-churn --range all
+tm analyze --file-churn --range all --all-projects
 ```
 
 Use a fixed range:
@@ -103,7 +107,7 @@ tm analyze --file-churn --limit 10
 Show all history:
 
 ```bash
-tm analyze --file-churn --range all
+tm analyze --file-churn --range all --all-projects
 ```
 
 Use a release window:
@@ -127,8 +131,50 @@ tm analyze --tool-errors --file-churn
 Save machine-readable output:
 
 ```bash
-tm analyze --file-churn --range all --json > file-churn.json
+tm analyze --file-churn --range all --all-projects --json > file-churn.json
 ```
+
+## Project Scope
+
+`tm analyze --file-churn` defaults to the current project in v1.2.
+
+The current project is resolved from the current working directory.
+
+The command then filters sessions before calculating top files, hotspots, and the daily trend.
+
+The default JSON `project_scope` value is `current`.
+
+Use all projects:
+
+```bash
+tm analyze --file-churn --all-projects
+```
+
+The JSON `project_scope` value becomes `all`.
+
+Use a named project:
+
+```bash
+tm analyze --file-churn --project tokenmeter
+```
+
+The JSON `project_scope` value becomes `explicit:tokenmeter`.
+
+Use aliases for multiple local checkouts:
+
+```bash
+tm analyze --file-churn --project tokenmeter --project-aliases '{"tokenmeter":["/repo/tokenmeter","/work/tokenmeter-review"]}'
+```
+
+`--project-aliases` accepts inline JSON.
+
+It also accepts a JSON file path.
+
+`--all-projects` cannot be combined with `--project`.
+
+Use current-project scope for daily review.
+
+Use `--all-projects` for release-wide audits that intentionally cross repositories.
 
 ## Output Section: Top Changed Files
 
@@ -302,6 +348,7 @@ The shape is:
 ```json
 {
   "file_churn": {
+    "project_scope": "current",
     "top_files": [
       {
         "path": "internal/storage/db.go",
@@ -332,6 +379,8 @@ The shape is:
   }
 }
 ```
+
+`project_scope` is `current`, `all`, or `explicit:<name>`.
 
 `top_files[].path` is the exact captured file path.
 
@@ -379,25 +428,21 @@ High churn under CLI command files can indicate help or flag drift.
 
 Use the mode mix before deciding whether churn is risky.
 
-## Cross-Project Caveat
+## Cross-Project Audits
 
-In v1.2, file churn is database-wide for the selected time range.
+Current-project scope is the default.
 
-It is not filtered by project path.
+That prevents unrelated repositories in the same TokenMeter database from mixing into normal churn reports.
 
-That matters if one TokenMeter database contains several repositories.
+Use `--all-projects` when you intentionally want the old whole-database view.
 
-The top file list can mix projects.
-
-The hotspot list can mix projects.
+Whole-database output can mix repositories.
 
 Absolute path roots help reveal this.
 
-Relative paths may collide across repositories.
+Relative paths can still collide across repositories.
 
-Use a narrower date range when reviewing one project.
-
-Use separate databases when you need strict project isolation.
+Use `--project NAME` and `--project-aliases` when a repository has several local checkouts.
 
 Pair churn results with session detail before making release decisions.
 
@@ -406,10 +451,16 @@ Pair churn results with session detail before making release decisions.
 Start with:
 
 ```bash
-tm analyze --file-churn --range all --limit 20
+tm analyze --file-churn --limit 20
 ```
 
 Look for top files that appear in many sessions.
+
+Use whole-database mode for release audits:
+
+```bash
+tm analyze --file-churn --range all --all-projects --limit 20
+```
 
 Then inspect recent search hits:
 
@@ -455,6 +506,16 @@ Analyze date flags use `YYYYMMDD`.
 
 Search date filters use `YYYY-MM-DD`.
 
+If expected files are missing, check project scope.
+
+Run:
+
+```bash
+tm analyze --file-churn --all-projects
+```
+
+If the files appear, add `--project NAME` or `--project-aliases` to include the intended worktree.
+
 ## See Also
 
 Use [Tool Error Analysis](./tool-error-analysis.md) to find failing tools near hot files.
@@ -462,4 +523,3 @@ Use [Tool Error Analysis](./tool-error-analysis.md) to find failing tools near h
 Use [Search Query DSL](./search-query-dsl.md) to inspect specific file paths.
 
 Use [Blocks and Statusline](./blocks-and-statusline.md) to correlate churn with active billing windows.
-
