@@ -61,6 +61,9 @@ type BlockRow struct {
 	Status            string // "ACTIVE" | "closed" | "gap"
 	Projection        *BlockProjection
 	Breakdown         []ModelBreakdown // populated when opts.Breakdown=true
+	TokenLimit        int64
+	UsagePct          float64
+	TokenLimitStatus  string
 }
 
 // BlockProjection holds extrapolated totals for an active block.

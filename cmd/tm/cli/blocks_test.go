@@ -29,6 +29,8 @@ type blocksJSON struct {
 		TotalTokens  int64    `json:"totalTokens"`
 		TotalCost    float64  `json:"totalCost"`
 		Status       string   `json:"status"`
+		TokenLimit   int64    `json:"token_limit"`
+		UsagePct     float64  `json:"usage_pct"`
 	} `json:"blocks"`
 	Totals struct {
 		TotalCost float64 `json:"totalCost"`
@@ -170,5 +172,66 @@ func TestRunBlocksModeCalculate(t *testing.T) {
 	// JSON output should include non-zero totalCost.
 	if strings.Contains(buf.String(), `"totalCost": 0`) || strings.Contains(buf.String(), `"totalCost":0`) {
 		t.Fatalf("expected recalculated cost, got:\n%s", buf.String())
+	}
+}
+
+func TestParseSharedTokenLimitFlag(t *testing.T) {
+	got, rest, err := cli.ParseShared([]string{"blocks", "--token-limit", "max"})
+	if err != nil {
+		t.Fatalf("ParseShared: %v", err)
+	}
+	if got.TokenLimit != "max" {
+		t.Fatalf("TokenLimit=%q want max", got.TokenLimit)
+	}
+	if len(rest) != 1 || rest[0] != "blocks" {
+		t.Fatalf("rest=%v want [blocks]", rest)
+	}
+}
+
+func TestRunBlocksTokenLimitMaxUsesHighestBlock(t *testing.T) {
+	loader := stubLoader{items: []storage.TokenUsageEntry{
+		{SessionID: "s1", Timestamp: mustTime("2026-05-19T10:00:00Z"), Model: "claude", InputTokens: 100, CostUSD: 1.0},
+		{SessionID: "s2", Timestamp: mustTime("2026-05-19T18:00:00Z"), Model: "claude", InputTokens: 250, CostUSD: 2.0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunBlocks(context.Background(), &buf, cli.BlocksArgs{
+		Shared:        cli.Shared{JSON: true, TokenLimit: "max"},
+		SessionLength: 5 * time.Hour,
+		Now:           mustTime("2026-05-20T12:00:00Z"),
+	}, loader); err != nil {
+		t.Fatalf("RunBlocks: %v", err)
+	}
+	var got blocksJSON
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(got.Blocks) == 0 {
+		t.Fatalf("expected blocks in JSON:\n%s", buf.String())
+	}
+	for _, b := range got.Blocks {
+		if b.TokenLimit != 250 {
+			t.Fatalf("token_limit=%d want 250 in block %+v", b.TokenLimit, b)
+		}
+	}
+}
+
+func TestRunBlocksJSONIncludesTokenLimitFields(t *testing.T) {
+	loader := stubLoader{items: []storage.TokenUsageEntry{
+		{SessionID: "s", Timestamp: mustTime("2026-05-19T10:00:00Z"), Model: "claude", InputTokens: 80, CostUSD: 1.0},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunBlocks(context.Background(), &buf, cli.BlocksArgs{
+		Shared:        cli.Shared{JSON: true, TokenLimit: "100"},
+		SessionLength: 5 * time.Hour,
+		Now:           mustTime("2026-05-20T12:00:00Z"),
+	}, loader); err != nil {
+		t.Fatalf("RunBlocks: %v", err)
+	}
+	var got blocksJSON
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if got.Blocks[0].TokenLimit != 100 || got.Blocks[0].UsagePct != 80 || got.Blocks[0].Status != "WARN" {
+		t.Fatalf("token-limit JSON mismatch: %+v", got.Blocks[0])
 	}
 }

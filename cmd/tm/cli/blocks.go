@@ -2,8 +2,11 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
@@ -51,8 +54,14 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	if args.Active {
 		all = filterActive(all)
 	}
+	tokenLimit, err := resolveTokenLimit(args.Shared.TokenLimit, all)
+	if err != nil {
+		return err
+	}
+	limited := blocks.AnnotateWithTokenLimit(all, tokenLimit)
 	rows := make([]render.BlockRow, 0, len(all))
-	for _, b := range all {
+	for _, annotated := range limited {
+		b := annotated.Block
 		row := render.BlockRow{
 			Period:            b.StartTime.Format("2006-01-02 15:04"),
 			Models:            b.Models,
@@ -63,6 +72,9 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 			TotalTokens:       b.Tokens.Total(),
 			Cost:              b.Cost,
 			Status:            blockStatus(b),
+			TokenLimit:        annotated.TokenLimit,
+			UsagePct:          annotated.UsagePct,
+			TokenLimitStatus:  annotated.TokenLimitStatus,
 		}
 		if b.Projection != nil {
 			row.Projection = &render.BlockProjection{
@@ -103,6 +115,21 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 		rows = append(rows, row)
 	}
 	return render.New().RenderBlocks(out, rows, renderOpts(args.Shared, out))
+}
+
+func resolveTokenLimit(raw string, all []blocks.SessionBlock) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "0" {
+		return 0, nil
+	}
+	if raw == "max" {
+		return blocks.MaxTokenLimit(all), nil
+	}
+	limit, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || limit < 0 {
+		return 0, fmt.Errorf("invalid --token-limit %q (want positive integer or max)", raw)
+	}
+	return limit, nil
 }
 
 // filterActive keeps only the active 5h window, honoring --active. Lives in

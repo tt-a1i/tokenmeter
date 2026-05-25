@@ -241,8 +241,17 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 	t.SetOutputMirror(w)
 	t.SetStyle(table.StyleRounded)
 	compact := compactLayout(w, opts)
+	withLimit := blocksHaveTokenLimit(rows)
+	progressWidth := 12
 	if compact {
+		progressWidth = 8
+	}
+	if compact && withLimit {
+		t.AppendHeader(table.Row{"Period", "Input", "Output", "Cache", "Total", "Cost", "Usage%", "Progress", "Status"})
+	} else if compact {
 		t.AppendHeader(table.Row{"Period", "Input", "Output", "Cache", "Total", "Cost", "Status"})
+	} else if withLimit {
+		t.AppendHeader(table.Row{"Period", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Usage%", "Progress", "Status"})
 	} else {
 		t.AppendHeader(table.Row{"Period", "Models", "Input", "Output", "Cache Crt.", "Cache Read", "Total", "Cost", "Status"})
 	}
@@ -268,10 +277,30 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 		}
 	}
 
+	colorizeLimitStatus := func(s string) string {
+		if !opts.Color {
+			return s
+		}
+		switch s {
+		case "OK":
+			return text.FgGreen.Sprint(s)
+		case "WARN":
+			return text.FgYellow.Sprint(s)
+		case "ALERT":
+			return text.FgRed.Sprint(s)
+		default:
+			return s
+		}
+	}
+
 	var sumIn, sumOut, sumCC, sumCR, sumTotal int64
 	var sumCost float64
 	for _, r := range rows {
-		if compact {
+		status := colorizeStatus(r.Status)
+		if withLimit && r.TokenLimit > 0 {
+			status = colorizeLimitStatus(r.TokenLimitStatus)
+		}
+		if compact && withLimit {
 			t.AppendRow(table.Row{
 				r.Period,
 				colorize(text.FgYellow, fmtInt(r.InputTokens)),
@@ -279,7 +308,33 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
 				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
 				colorize(text.FgRed, fmtCost(r.Cost)),
-				colorizeStatus(r.Status),
+				formatUsagePct(r),
+				progressBar(r.UsagePct, progressWidth),
+				status,
+			})
+		} else if compact {
+			t.AppendRow(table.Row{
+				r.Period,
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens+r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+				status,
+			})
+		} else if withLimit {
+			t.AppendRow(table.Row{
+				r.Period,
+				colorize(text.FgCyan, joinList(r.Models)),
+				colorize(text.FgYellow, fmtInt(r.InputTokens)),
+				colorize(text.FgYellow, fmtInt(r.OutputTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheCreateTokens)),
+				colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
+				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
+				colorize(text.FgRed, fmtCost(r.Cost)),
+				formatUsagePct(r),
+				progressBar(r.UsagePct, progressWidth),
+				status,
 			})
 		} else {
 			t.AppendRow(table.Row{
@@ -291,17 +346,31 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 				colorize(text.FgYellow, fmtInt(r.CacheReadTokens)),
 				colorize(text.FgYellow, fmtInt(r.TotalTokens)),
 				colorize(text.FgRed, fmtCost(r.Cost)),
-				colorizeStatus(r.Status),
+				status,
 			})
 		}
 		if opts.Breakdown {
 			for _, b := range r.Breakdown {
-				if compact {
+				if compact && withLimit {
+					t.AppendRow(table.Row{
+						"  └─ " + b.Model,
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost), "", "", "",
+					})
+				} else if compact {
 					t.AppendRow(table.Row{
 						"  └─ " + b.Model,
 						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
 						fmtInt(b.CacheCreateTokens + b.CacheReadTokens),
 						fmtInt(b.TotalTokens), fmtCost(b.Cost), "",
+					})
+				} else if withLimit {
+					t.AppendRow(table.Row{
+						"  └─ " + b.Model, "",
+						fmtInt(b.InputTokens), fmtInt(b.OutputTokens),
+						fmtInt(b.CacheCreateTokens), fmtInt(b.CacheReadTokens),
+						fmtInt(b.TotalTokens), fmtCost(b.Cost), "", "", "",
 					})
 				} else {
 					t.AppendRow(table.Row{
@@ -321,13 +390,29 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 		sumCost += r.Cost
 	}
 	t.AppendSeparator()
-	if compact {
+	if compact && withLimit {
+		t.AppendFooter(table.Row{
+			"TOTAL",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC + sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+			"", "", "",
+		})
+	} else if compact {
 		t.AppendFooter(table.Row{
 			"TOTAL",
 			fmtInt(sumIn), fmtInt(sumOut),
 			fmtInt(sumCC + sumCR),
 			fmtInt(sumTotal), fmtCost(sumCost),
 			"",
+		})
+	} else if withLimit {
+		t.AppendFooter(table.Row{
+			"TOTAL", "",
+			fmtInt(sumIn), fmtInt(sumOut),
+			fmtInt(sumCC), fmtInt(sumCR),
+			fmtInt(sumTotal), fmtCost(sumCost),
+			"", "", "",
 		})
 	} else {
 		t.AppendFooter(table.Row{
@@ -340,6 +425,33 @@ func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options
 	}
 	t.Render()
 	return nil
+}
+
+func blocksHaveTokenLimit(rows []BlockRow) bool {
+	for _, r := range rows {
+		if r.TokenLimit > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func formatUsagePct(r BlockRow) string {
+	if r.TokenLimit <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%.0f%%", r.UsagePct)
+}
+
+func progressBar(usage float64, width int) string {
+	if usage < 0 {
+		usage = 0
+	}
+	filled := int(usage*float64(width)/100 + 0.5)
+	if filled > width {
+		filled = width
+	}
+	return "[" + strings.Repeat("█", filled) + strings.Repeat("░", width-filled) + "] " + fmt.Sprintf("%.0f%%", usage)
 }
 
 func fmtInt(n int64) string {

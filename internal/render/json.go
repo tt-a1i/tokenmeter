@@ -47,6 +47,8 @@ type blockJSONRow struct {
 	TotalTokens         int64                `json:"totalTokens"`
 	TotalCost           float64              `json:"totalCost"`
 	Status              string               `json:"status"`
+	TokenLimit          int64                `json:"token_limit,omitempty"`
+	UsagePct            float64              `json:"usage_pct,omitempty"`
 	Projection          *blockProjectionJSON `json:"projection,omitempty"`
 	ModelBreakdowns     []breakdownJSON      `json:"modelBreakdowns,omitempty"`
 }
@@ -175,6 +177,11 @@ func (defaultRenderer) renderBlocksJSON(w io.Writer, rows []BlockRow) error {
 			TotalTokens:         r.TotalTokens,
 			TotalCost:           r.Cost,
 			Status:              r.Status,
+		}
+		if r.TokenLimit > 0 {
+			row.TokenLimit = r.TokenLimit
+			row.UsagePct = r.UsagePct
+			row.Status = r.TokenLimitStatus
 		}
 		if r.Projection != nil {
 			row.Projection = &blockProjectionJSON{

@@ -55,3 +55,12 @@ type SessionBlock struct {
 	// and for callers that don't request a breakdown.
 	PerModel map[string]TokenCounts
 }
+
+type Block = SessionBlock
+
+type AnnotatedBlock struct {
+	Block
+	TokenLimit       int64
+	UsagePct         float64
+	TokenLimitStatus string
+}

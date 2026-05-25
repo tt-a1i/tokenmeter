@@ -26,6 +26,7 @@ type Shared struct {
 	ContextLowThreshold    int
 	ContextMediumThreshold int
 	BurnRateDisplay        string
+	TokenLimit             string
 	SessionLength          time.Duration
 	Active                 bool
 	CPUProfile             string
@@ -54,6 +55,7 @@ func ParseShared(args []string) (Shared, []string, error) {
 	fs.IntVar(&s.ContextLowThreshold, "context-low-threshold", 0, "statusline context warning threshold percent")
 	fs.IntVar(&s.ContextMediumThreshold, "context-medium-threshold", 0, "statusline context danger threshold percent")
 	fs.StringVar(&s.BurnRateDisplay, "burn-rate-display", "", "statusline burn-rate display: off | emoji | text | emoji-text")
+	fs.StringVar(&s.TokenLimit, "token-limit", "", "blocks token limit: positive integer or max")
 	var sessionLengthStr string
 	fs.StringVar(&sessionLengthStr, "session-length", "5h", "duration of one session block (e.g. 5h, 1h30m)")
 	fs.BoolVar(&s.Active, "active", false, "blocks: show only the active 5h window")
