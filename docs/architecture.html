@@ -373,7 +373,7 @@
         <div class="pulse-dot"></div>
         <h1>tokenmeter Architecture</h1>
       </div>
-      <p class="subtitle">AI 编码 Agent 实时可观测性管道 &middot; Claude Code + Codex → SQLite → TUI / Web</p>
+      <p class="subtitle">AI 编码 Agent 实时可观测性管道 &middot; Claude Code + Codex → SQLite → CLI / Web</p>
     </div>
 
     <div class="diagram-container">
@@ -495,7 +495,7 @@
         <text x="565" y="322" class="t-muted" font-size="8">source_id dedup</text>
 
         <text x="565" y="354" class="t-primary" font-size="10" font-weight="600">▸ Broadcast hub</text>
-        <text x="565" y="370" class="t-muted" font-size="8">subscribers: TUI, web</text>
+        <text x="565" y="370" class="t-muted" font-size="8">subscribers: watch, web</text>
         <text x="565" y="382" class="t-muted" font-size="8">2s heartbeat tick</text>
 
         <text x="565" y="414" class="t-primary" font-size="10" font-weight="600">▸ Session lifecycle</text>
@@ -509,14 +509,14 @@
         <text x="645" y="560" class="t-dim" font-size="8" text-anchor="middle">internal/daemon &middot; internal/event</text>
         <text x="645" y="572" class="t-dim" font-size="8" text-anchor="middle">internal/collector</text>
 
-        <!-- Right column: TUI / SQLite / web / Browser -->
+        <!-- Right column: CLI / SQLite / web / Browser -->
         <rect x="775" y="60" width="240" height="95" rx="6" class="c-mask"/>
         <rect x="775" y="60" width="240" height="95" rx="6" class="c-frontend" stroke-width="1.5"/>
-        <text x="895" y="84" class="t-primary" font-size="12" font-weight="700" text-anchor="middle">tokenmeter TUI</text>
-        <text x="895" y="101" class="t-muted" font-size="9" text-anchor="middle">bubbletea &middot; 4 tabs</text>
-        <text x="895" y="122" class="t-frontend" font-size="8" text-anchor="middle">Dashboard &middot; Messages</text>
-        <text x="895" y="136" class="t-frontend" font-size="8" text-anchor="middle">Tool Calls &middot; Timeline</text>
-        <text x="895" y="150" class="t-muted" font-size="7" text-anchor="middle">j/k &middot; Enter &middot; / &middot; [ ]</text>
+        <text x="895" y="84" class="t-primary" font-size="12" font-weight="700" text-anchor="middle">tokenmeter CLI</text>
+        <text x="895" y="101" class="t-muted" font-size="9" text-anchor="middle">ccusage-style reports</text>
+        <text x="895" y="122" class="t-frontend" font-size="8" text-anchor="middle">daily &middot; weekly &middot; monthly</text>
+        <text x="895" y="136" class="t-frontend" font-size="8" text-anchor="middle">session &middot; blocks &middot; watch</text>
+        <text x="895" y="150" class="t-muted" font-size="7" text-anchor="middle">tables &middot; JSON &middot; CSV export</text>
 
         <rect x="775" y="195" width="240" height="160" rx="6" class="c-mask"/>
         <rect x="775" y="195" width="240" height="160" rx="6" class="c-database" stroke-width="1.5"/>
@@ -604,16 +604,16 @@
           <h3>UI Consumers</h3>
         </div>
         <ul>
-          <li>&bull; <strong>TUI</strong> — bubbletea 4 tabs, 2s poll + live broadcast; keys: <code>j k Enter / [ ]</code></li>
+          <li>&bull; <strong>CLI</strong> — daily/weekly/monthly/session/blocks reports with table, JSON, and CSV paths</li>
           <li>&bull; <strong>Web</strong> — HTTP server reads SQLite, serves embedded SPA with daily cost reports</li>
-          <li>&bull; Both receive the daemon's live event stream — TUI updates instantly, web refreshes via fetch</li>
+          <li>&bull; Live daemon events are exposed through <code>tm watch</code> and web refresh paths</li>
           <li>&bull; <code>tokenmeter web</code> auto-spawns daemon + watchers on start (no manual daemon needed)</li>
         </ul>
       </div>
     </div>
 
     <p class="footer">
-      tokenmeter &bull; Go 1.24 &bull; Bubbletea TUI &bull; modernc SQLite &bull; Unix socket &bull; <code>~/.tokenmeter/</code>
+      tokenmeter &bull; Go 1.24 &bull; CLI reports &bull; modernc SQLite &bull; Unix socket &bull; <code>~/.tokenmeter/</code>
     </p>
   </div>
 

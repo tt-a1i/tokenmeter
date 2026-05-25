@@ -177,7 +177,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
     <li><a href="#sources"><span class="num">03</span>两条数据源</a></li>
     <li><a href="#event"><span class="num">04</span>统一事件</a></li>
     <li><a href="#schema"><span class="num">05</span>SQLite 五张表</a></li>
-    <li><a href="#tui"><span class="num">06</span>TUI 四视图</a></li>
+    <li><a href="#cli"><span class="num">06</span>CLI 报表</a></li>
     <li><a href="#web"><span class="num">07</span>Web Dashboard</a></li>
     <li><a href="#identity"><span class="num">08</span>去重与身份</a></li>
     <li><a href="#cmd"><span class="num">09</span>命令速查</a></li>
@@ -197,13 +197,13 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
 
   <h1 class="title">给 AI 编码 Agent<br>装一副<em>仪表盘</em></h1>
 
-  <p class="subtitle">一个常驻本地的 daemon，把 Claude Code 和 Codex 的每次工具调用、每次 token 消耗、每一次会话都收集进 SQLite，再用 TUI 和 Web 两套面板回放给你看。</p>
+  <p class="subtitle">一个常驻本地的 daemon，把 Claude Code 和 Codex 的每次工具调用、每次 token 消耗、每一次会话都收集进 SQLite，再用 CLI 报表和 Web Dashboard 回放给你看。</p>
 
   <div class="tldr-card">
     <ol>
       <li>用 Claude Code / Codex 写代码，钱花在哪里、做了什么、花了多长时间——默认是黑盒。TokenMeter 把它打开。</li>
       <li>两条数据源：Claude 走 hook 事件 + JSONL 日志，Codex 只能扫日志。一个 daemon 接住，统一落到 SQLite。</li>
-      <li>终端里 <code>tm</code> 开 TUI 看四视图；浏览器里 <code>tm web</code> 开 Dashboard。零配置、单二进制、纯 Go。</li>
+      <li>终端里 <code>tm</code> 或 <code>tm daily</code> 看每日汇总；浏览器里 <code>tm web</code> 开 Dashboard。单二进制、纯 Go、本地优先。</li>
     </ol>
   </div>
 
@@ -214,7 +214,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
     </div>
     <div>
       <dt>读完能答</dt>
-      <dd>TokenMeter 解决什么问题、数据怎么来、怎么落库、TUI/Web 怎么读、为什么两条平台路径不一样。</dd>
+      <dd>TokenMeter 解决什么问题、数据怎么来、怎么落库、CLI/Web 怎么读、为什么两条平台路径不一样。</dd>
     </div>
     <div>
       <dt>对照原件</dt>
@@ -290,7 +290,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
     <div class="chapter-num">02</div>
     <div class="chapter-kicker"><span class="tick"></span>CHAPTER TWO · 一张图看全</div>
     <h2 class="chapter-title">一个 daemon <em>接住所有</em></h2>
-    <p class="chapter-lede">架构可以在一张图里讲完：左边数据源、中间 daemon + SQLite、右边 TUI 与 Web。</p>
+    <p class="chapter-lede">架构可以在一张图里讲完：左边数据源、中间 daemon + SQLite、右边 CLI 与 Web。</p>
   </div>
 
   <div class="prose">
@@ -356,8 +356,8 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
         <g transform="translate(620 80)">
           <text class="node-text kicker" x="0" y="0">④ CONSUMERS · 界面</text>
           <rect class="node-box accent" x="0" y="10" width="120" height="50" rx="2"/>
-          <text class="node-text on-dark" x="60" y="32" text-anchor="middle">tm TUI</text>
-          <text class="node-text kicker on-dark" x="60" y="48" text-anchor="middle" style="fill:#efe9d9">bubbletea · 4 tabs</text>
+          <text class="node-text on-dark" x="60" y="32" text-anchor="middle">tm CLI</text>
+          <text class="node-text kicker on-dark" x="60" y="48" text-anchor="middle" style="fill:#efe9d9">reports · watch</text>
           <rect class="node-box accent" x="0" y="130" width="120" height="50" rx="2"/>
           <text class="node-text on-dark" x="60" y="152" text-anchor="middle">tm web</text>
           <text class="node-text kicker on-dark" x="60" y="168" text-anchor="middle" style="fill:#efe9d9">HTTP · :8370</text>
@@ -384,12 +384,12 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
       <li><b>Collectors · 转换层</b>：<code>tm emit</code> 是 hook 的轻量接收端；<code>ClaudeLogWatcher</code> 扫描 JSONL 补 token；<code>CodexWatcher</code> 轮询 Codex 会话目录</li>
       <li><b>Daemon</b>：Unix socket 接事件 → 写 SQLite → 广播给订阅者。单例，PID lock 保护</li>
       <li><b>SQLite</b>：<code>~/.tokenmeter/data/tokenmeter.db</code>，5 张表装下所有历史</li>
-      <li><b>Consumers</b>：TUI（bubbletea，4 个 tab）订阅实时事件；Web（嵌入式 SPA + REST API）独立启动</li>
+      <li><b>Consumers</b>：CLI 报表读取 SQLite 或本地 source 日志，<code>tm watch</code> 订阅实时事件；Web（嵌入式 SPA + REST API）独立启动</li>
     </ol>
 
     <div class="callout key">
       <div class="label">一句话版本</div>
-      <p>左边抓数据、中间 daemon 存库、右边两种界面展示。抓取与展示解耦——daemon 在后台安静跑着，开不开 TUI 都不影响数据持续采集。</p>
+      <p>左边抓数据、中间 daemon 存库、右边 CLI 与 Web 展示。抓取与展示解耦——daemon 在后台安静跑着，开不开报表界面都不影响数据持续采集。</p>
     </div>
 
   </div>
@@ -500,7 +500,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
 
     <p>Claude 和 Codex 的原生事件结构<b>完全不一样</b>。Claude 的 hook JSON 有 <code>hook_event_name / session_id / tool_input / tool_use_id</code>；Codex 的 JSONL 里是 <code>timestamp / type / payload</code> 套娃。</p>
 
-    <p>如果 daemon、storage、TUI 都分别处理两种原生格式，每加一个平台就要在五个地方改代码。所以 TokenMeter 的第一件事是把它们<b>收敛到统一 Event</b>，后面所有层都只认 Event。</p>
+    <p>如果 daemon、storage、CLI、Web 都分别处理两种原生格式，每加一个平台就要在五个地方改代码。所以 TokenMeter 的第一件事是把它们<b>收敛到统一 Event</b>，后面所有层都只认 Event。</p>
 
     <div class="callout analogy">
       <div class="label">类比 · 海关报关单</div>
@@ -520,7 +520,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
 
     <div class="callout key">
       <div class="label">统一事件的红利</div>
-      <p>未来接第三个平台（比如 Cursor、Cline 或自研 agent），只需要写一个新的 collector 把原生信号转成 <code>Event</code>，后面 daemon / storage / TUI / Web 全都<b>不用改</b>。这是"统一模型"为软件换来的弹性。</p>
+      <p>未来接第三个平台（比如 Cursor、Cline 或自研 agent），只需要写一个新的 collector 把原生信号转成 <code>Event</code>，后面 daemon / storage / CLI / Web 全都<b>不用改</b>。这是"统一模型"为软件换来的弹性。</p>
     </div>
 
   </div>
@@ -591,13 +591,13 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
   </div>
 </section>
 
-<!-- ============== 06 · TUI ============== -->
-<section class="chapter" id="tui">
+<!-- ============== 06 · CLI ============== -->
+<section class="chapter" id="cli">
   <div class="chapter-head">
     <div class="chapter-num">06</div>
-    <div class="chapter-kicker"><span class="tick"></span>CHAPTER SIX · 终端面板</div>
-    <h2 class="chapter-title">TUI <em>四视图</em></h2>
-    <p class="chapter-lede">Bubbletea 做底、每 2 秒轮询 + 实时事件推送。Tab 键切换，j/k 上下移，<code>/</code> 搜索。</p>
+    <div class="chapter-kicker"><span class="tick"></span>CHAPTER SIX · 终端报表</div>
+    <h2 class="chapter-title">CLI <em>命令面</em></h2>
+    <p class="chapter-lede"><code>tm</code> 默认显示 daily 报表；其他命令按时间、session、5 小时窗口和实时事件流拆开。</p>
   </div>
 
   <div class="prose">
@@ -605,68 +605,68 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
     <table class="clean">
       <thead>
         <tr>
-          <th style="width: 140px;">视图</th>
+          <th style="width: 140px;">命令</th>
           <th>内容</th>
           <th style="width: 220px;">数据来源</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>Dashboard</td>
-          <td>会话列表（费用、上下文占用、状态、标签）；顶部汇总栏支持 <code>t</code> 切换今日/本周/本月/全部</td>
-          <td><code>db.ListSessions()</code></td>
+          <td><code>tm daily</code></td>
+          <td>按日期汇总所有来源的 token 与 cost；无参数 <code>tm</code> 走同一路径</td>
+          <td>SQLite + batch adapters</td>
         </tr>
         <tr>
-          <td>Messages</td>
-          <td>从 Claude / Codex JSONL 提取的用户对话消息；<code>/</code> 全文搜索</td>
-          <td><code>collector.ReadUserMessages()</code></td>
+          <td><code>tm session</code></td>
+          <td>按 session 展示 project、models、input/output/cache/total/cost，可传 session id 过滤</td>
+          <td>SQLite + JSONL metadata</td>
         </tr>
         <tr>
-          <td>Tool Calls</td>
-          <td>当前会话的工具调用流；Enter 展开查看参数与结果</td>
-          <td><code>db.ListToolCalls(session, 500)</code></td>
+          <td><code>tm blocks</code></td>
+          <td>显示 5 小时窗口、active block、burn rate 与 projection</td>
+          <td>SQLite token rows</td>
         </tr>
         <tr>
-          <td>Stats</td>
-          <td>7 天费用柱状图、工具调用统计、Agent 分布、文件变更汇总</td>
-          <td>多张表聚合</td>
+          <td><code>tm watch</code></td>
+          <td>从 daemon socket 流式输出 tool/token/file/session/agent 事件</td>
+          <td>daemon subscriber socket</td>
         </tr>
       </tbody>
     </table>
 
-    <h3>刷新机制：轮询 + 推送</h3>
+    <h3>输出机制：报表 + 事件流</h3>
 
-    <p>TUI 每 2 秒跑一次 <code>tickCmd</code> 主动查库（兜底），同时订阅 daemon 的实时事件（<code>listenEvents</code>）——有新 hook 事件一到就立刻刷屏。两条路互为保底。</p>
+    <p>聚合命令读取 SQLite 和本地 source 日志，输出表格或 JSON；<code>tm watch</code> 走 daemon subscriber socket，适合看实时事件。</p>
 
     <div class="callout analogy">
       <div class="label">类比 · 车站到站显示屏</div>
-      <p>显示屏既接收调度中心的实时推送（新车进站立刻改），又每 30 秒自己拉一次全表（防推送丢包）。TUI 的 <code>tick + listenEvents</code> 是同一套思路——实时但不依赖实时。</p>
+      <p>日报表像班次汇总，按需生成；<code>tm watch</code> 像站台广播，有新事件就推过来。两种模式互补，不要求用户常驻一个终端界面。</p>
     </div>
 
     <h3>几个贴心细节</h3>
 
     <ul>
-      <li><b>gitBranch 作显示名</b>：原始 session UUID 太丑；优先用 JSONL 顶层的 <code>gitBranch</code>，其次 <code>filepath.Base(cwd)</code>，最后才是 UUID</li>
-      <li><b>跨视图切会话</b>：<code>[</code> / <code>]</code> 在任何 tab 都能切上一个/下一个 session</li>
-      <li><b>Copy 恢复命令</b>：<code>c</code> 键把当前会话的恢复命令拷到剪贴板</li>
-      <li><b>展开详情不丢</b>：<code>expandedCalls</code> map 按 call_id 持久化，刷新后仍保留哪些调用是展开的</li>
+      <li><b>默认命令清楚</b>：<code>tm</code> 等同 <code>tm daily</code>，不会再进入交互界面</li>
+      <li><b>范围过滤统一</b>：shared flags 支持 date range、timezone、project、json、jq 等常用选项</li>
+      <li><b>旧命令兼容</b>：<code>cost</code>、<code>report</code>、<code>status</code>、<code>top</code> 仍作为 deprecated alias 保留到 v2.0</li>
+      <li><b>Web 不被 CLI 绑住</b>：需要图表、搜索、session 详情时直接开 <code>tm web</code></li>
     </ul>
 
-    <h4>快捷键节选</h4>
+    <h4>常用命令节选</h4>
 
     <div class="check-grid">
-      <div class="check-item"><span class="idx">01</span><div><div class="label">Tab / Shift+Tab</div><div class="hint">切换视图</div></div></div>
-      <div class="check-item"><span class="idx">02</span><div><div class="label">j / k</div><div class="hint">上下导航</div></div></div>
-      <div class="check-item"><span class="idx">03</span><div><div class="label">G</div><div class="hint">跳到底部</div></div></div>
-      <div class="check-item"><span class="idx">04</span><div><div class="label">Enter</div><div class="hint">选择 / 展开</div></div></div>
-      <div class="check-item"><span class="idx">05</span><div><div class="label">[ / ]</div><div class="hint">切会话</div></div></div>
-      <div class="check-item"><span class="idx">06</span><div><div class="label">/</div><div class="hint">过滤当前列表</div></div></div>
-      <div class="check-item"><span class="idx">07</span><div><div class="label">t</div><div class="hint">切时间范围</div></div></div>
-      <div class="check-item"><span class="idx">08</span><div><div class="label">p</div><div class="hint">切平台（全部/Claude/Codex）</div></div></div>
-      <div class="check-item"><span class="idx">09</span><div><div class="label">s</div><div class="hint">切排序（最近/费用）</div></div></div>
-      <div class="check-item"><span class="idx">10</span><div><div class="label">c</div><div class="hint">复制恢复命令</div></div></div>
-      <div class="check-item"><span class="idx">11</span><div><div class="label">Esc</div><div class="hint">清过滤</div></div></div>
-      <div class="check-item"><span class="idx">12</span><div><div class="label">q</div><div class="hint">退出</div></div></div>
+      <div class="check-item"><span class="idx">01</span><div><div class="label">tm daily</div><div class="hint">今日/日期汇总</div></div></div>
+      <div class="check-item"><span class="idx">02</span><div><div class="label">tm weekly</div><div class="hint">ISO 周汇总</div></div></div>
+      <div class="check-item"><span class="idx">03</span><div><div class="label">tm monthly</div><div class="hint">月度汇总</div></div></div>
+      <div class="check-item"><span class="idx">04</span><div><div class="label">tm session</div><div class="hint">会话明细</div></div></div>
+      <div class="check-item"><span class="idx">05</span><div><div class="label">tm blocks</div><div class="hint">5 小时窗口</div></div></div>
+      <div class="check-item"><span class="idx">06</span><div><div class="label">tm watch</div><div class="hint">实时事件</div></div></div>
+      <div class="check-item"><span class="idx">07</span><div><div class="label">tm search</div><div class="hint">搜索工具/文件</div></div></div>
+      <div class="check-item"><span class="idx">08</span><div><div class="label">tm compare</div><div class="hint">比较 session</div></div></div>
+      <div class="check-item"><span class="idx">09</span><div><div class="label">tm export</div><div class="hint">CSV/JSON</div></div></div>
+      <div class="check-item"><span class="idx">10</span><div><div class="label">tm web</div><div class="hint">浏览器 Dashboard</div></div></div>
+      <div class="check-item"><span class="idx">11</span><div><div class="label">tm budget</div><div class="hint">预算</div></div></div>
+      <div class="check-item"><span class="idx">12</span><div><div class="label">tm webhook</div><div class="hint">告警集成</div></div></div>
     </div>
 
   </div>
@@ -677,7 +677,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
   <div class="chapter-head">
     <div class="chapter-num">07</div>
     <div class="chapter-kicker"><span class="tick"></span>CHAPTER SEVEN · 浏览器版本</div>
-    <h2 class="chapter-title">当 TUI <em>不够用</em></h2>
+    <h2 class="chapter-title">当 CLI <em>不够用</em></h2>
     <p class="chapter-lede">想看图表、想分享给不用终端的同事、想在更大屏幕上翻旧会话——启 <code>tm web</code> 就好。</p>
   </div>
 
@@ -696,11 +696,11 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
 
     <h3>架构上：独立的进程</h3>
 
-    <p>Web 不是 TUI 的扩展，是<b>独立进程</b>。它直接读 SQLite（与 daemon 共用同一个 .db 文件），对外暴露 REST API + 嵌入式 SPA（Go embed 打包，不依赖外部静态目录）。</p>
+    <p>Web 不是 CLI 的扩展，是<b>独立进程</b>。它直接读 SQLite（与 daemon 共用同一个 .db 文件），对外暴露 REST API + 嵌入式 SPA（Go embed 打包，不依赖外部静态目录）。</p>
 
     <div class="callout key">
       <div class="label">解耦设计</div>
-      <p>TUI 和 Web 互不知道对方存在。都读同一个 SQLite，都订阅同一套 daemon 事件。开一个不影响另一个。也可以只开 Web、不开 TUI。</p>
+      <p>CLI 和 Web 互不知道对方存在。CLI 按需读库生成报表，Web 直接读 SQLite 并使用自己的刷新路径。开一个不影响另一个。</p>
     </div>
 
   </div>
@@ -782,7 +782,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
       </thead>
       <tbody>
         <tr><td><code>tm setup</code></td><td>一次性：把 hook 注入 <code>~/.claude/settings.json</code></td></tr>
-        <tr><td><code>tm</code></td><td>启 TUI（自动拉起 daemon）</td></tr>
+        <tr><td><code>tm</code></td><td>默认显示 daily 报表</td></tr>
         <tr><td><code>tm web</code></td><td>启浏览器 Dashboard，默认 <code>:8370</code></td></tr>
       </tbody>
     </table>
@@ -817,7 +817,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
         </tr>
       </thead>
       <tbody>
-        <tr><td><code>tm daemon</code></td><td>只启 daemon，不开 TUI</td></tr>
+        <tr><td><code>tm daemon</code></td><td>只启 daemon，不开 Web</td></tr>
         <tr><td><code>tm uninstall</code></td><td>移除 hooks、停 daemon</td></tr>
         <tr><td><code>rm -rf ~/.tokenmeter</code></td><td>删除所有数据</td></tr>
         <tr><td><code>tm version</code></td><td>显示版本</td></tr>
@@ -848,7 +848,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
         <div class="pn">I</div>
         <div>
           <div class="pt">零配置 · 单二进制</div>
-          <div class="ps">装好就能用。<code>tm setup</code> + <code>tm</code> 两条命令到位。纯 Go，没有外部 runtime、没有数据库服务、没有 Python 环境。</div>
+          <div class="ps">装好就能用。<code>tm setup</code> + <code>tm daily</code> 两条命令到位。纯 Go，没有外部 runtime、没有数据库服务、没有 Python 环境。</div>
         </div>
       </div>
       <div class="principle">
@@ -862,7 +862,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
         <div class="pn">III</div>
         <div>
           <div class="pt">采集与展示解耦</div>
-          <div class="ps">daemon 默默跑着，开不开 TUI 不影响数据采集。TUI 和 Web 是两个独立进程，都读同一个 SQLite。</div>
+          <div class="ps">daemon 默默跑着，开不开 CLI 报表或 Web 不影响数据采集。CLI 和 Web 是两条独立展示路径。</div>
         </div>
       </div>
       <div class="principle">
@@ -883,7 +883,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
         <div class="pn">VI</div>
         <div>
           <div class="pt">实时但不依赖实时</div>
-          <div class="ps">TUI 既订阅 daemon 事件（实时），又每 2 秒轮询一次 SQLite（兜底）。推送丢了也不会漏数据。</div>
+          <div class="ps"><code>tm watch</code> 订阅 daemon 事件看实时变化；聚合报表按需重读 SQLite 和本地日志，推送丢了也不会漏历史数据。</div>
         </div>
       </div>
       <div class="principle">
@@ -897,7 +897,7 @@ footer.end a { color: var(--accent); text-decoration: none; border-bottom: 1px s
 
     <div class="callout key" style="margin-top: 3em;">
       <div class="label">一句话版本</div>
-      <p>TokenMeter 是给 AI 编码 agent 装的<b>本地仪表盘</b>——一个 Go 写的 daemon 接住 Claude Code 和 Codex 的所有信号，统一成事件落进 SQLite，再用 TUI 和 Web 两套界面回放。零配置、幂等、本地、解耦。</p>
+      <p>TokenMeter 是给 AI 编码 agent 装的<b>本地仪表盘</b>——一个 Go 写的 daemon 接住 Claude Code 和 Codex 的所有信号，统一成事件落进 SQLite，再用 CLI 报表和 Web Dashboard 回放。幂等、本地、解耦。</p>
     </div>
 
   </div>

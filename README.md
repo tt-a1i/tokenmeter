@@ -23,7 +23,7 @@
 
 ---
 
-> 在一个终端面板中监控 Claude Code 和 Codex 的 Token 消耗、费用、工具调用和消息列表，支持 TUI 和 Web 面板。
+> 用 CLI 报表和本地 Web Dashboard 监控 Claude Code、Codex 以及其他 AI 编码 Agent 的 Token 消耗、费用、工具调用和会话详情。
 <p align="center">
   <img width="711" alt="image" src="https://github.com/user-attachments/assets/b1dc6609-868e-4c24-bfc0-73baa9c81432" />
 </p>
@@ -37,20 +37,12 @@
 </p>
 
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/architecture-light.svg">
-    <img src="docs/architecture.svg" alt="tokenmeter 架构图" width="100%">
-  </picture>
-</p>
-
 ## 功能
 
 - **多平台** — Claude Code + Codex 统一视图
 - **Token 追踪** — 输入、输出、缓存创建、缓存读取 — 按会话、按模型细分
 - **费用估算** — 模型感知定价（Opus / Sonnet / Haiku / GPT-5 / GPT-4.1）
-- **7 天费用趋势** — Stats 视图内置垂直柱状图，一眼看清每日花费走势
+- **费用趋势** — Web Dashboard 内置费用图、热力图和模型/工具分布，一眼看清每日花费走势
 - **工具调用追踪** — 名称、参数、结果、耗时、状态
 - **对话消息** — 浏览每个会话中的用户提示词，支持 `/` 搜索过滤
 - **会话标签** — `tm tag <id> "备注"` 给会话打标签，方便回忆
@@ -58,8 +50,8 @@
 - **费用报告** — `tm report --weekly/--monthly` 生成 Markdown 费用报告（按模型、按会话细分）
 - **分享战报** — `tm share [session]` 生成可复制的 Markdown 会话复盘，适合群内分享或交接
 - **Web Dashboard** — `tm web` 启动本地 Web 面板，支持深色/浅色模式、面积图、会话详情、对话回顾
-- **实时更新** — daemon 广播事件，TUI 实时刷新
-- **零配置** — 首次运行 `tm` 自动注入 hooks，单二进制文件，无依赖
+- **实时更新** — daemon 广播事件，`tm watch` 与 Web Dashboard 可订阅实时变化
+- **单二进制** — `tm setup` 注入 hooks 后即可采集，核心功能无外部服务依赖
 
 ## 支持平台
 
@@ -122,49 +114,25 @@ Copilot CLI、Goose、Codebuff、Hermes、Kilo、Kimi、OpenClaw、pi-agent、Dr
 
 | 命令 | 说明 |
 |------|------|
-| `tm` | 启动 TUI（自动启动 daemon） |
+| `tm` | 默认等同于 `tm daily`，显示每日 Token / 费用汇总 |
 | `tm daemon` | 仅启动 daemon |
-| `tm status` | 快速查看会话摘要 |
-| `tm report [session]` | 详细文本报告 |
-| `tm report --weekly` | 本周 Markdown 费用报告 |
-| `tm report --monthly` | 本月 Markdown 费用报告 |
+| `tm daily` / `tm weekly` / `tm monthly` | 按日 / 周 / 月汇总所有来源 |
+| `tm session [id]` | 按 session 展示明细，可传 id 过滤 |
+| `tm blocks [--active]` | 5 小时窗口、burn rate 和 projection |
+| `tm statusline` | Claude Code statusline provider |
+| `tm watch [opts]` | 从 daemon socket 流式输出事件 |
 | `tm share [session]` | 生成可分享的 Markdown 会话战报 |
-| `tm cost [period]` | Token 用量统计（period: today / week / month / 3month / year / all） |
+| `tm export [opts]` | CSV / JSON 导出 |
 | `tm web [--port N]` | 启动 Web Dashboard（默认端口 8370） |
 | `tm clean [days]` | 清理 N 天前的历史数据（默认 7 天） |
 | `tm tag <id> [text]` | 给会话打标签（省略 text 则清除） |
+| `tm budget <subcommand>` | 管理预算 |
+| `tm webhook <subcommand>` | 管理 webhook endpoint |
 | `tm setup` | 配置 Claude Code hooks |
 | `tm uninstall` | 卸载 hooks 并停止 daemon |
 | `tm version` | 显示版本 |
 
-## TUI 视图
-
-按 **Tab** 切换视图：
-
-| 视图 | 内容 |
-|------|------|
-| **Dashboard** | 会话列表（费用、上下文占用、状态、标签）；汇总栏支持 `t` 键切换时间范围 |
-| **Messages** | 从 Claude / Codex JSONL 日志中提取的用户对话消息，支持 `/` 搜索 |
-| **Tool Calls** | 实时工具调用流，支持展开/折叠查看详情 |
-| **Stats** | 7 天费用柱状图、工具调用统计、Agent 分布、文件变更汇总 |
-
-## 快捷键
-
-| 按键 | 操作 |
-|------|------|
-| `Tab` / `Shift+Tab` | 切换视图 |
-| `j` / `k` | 上 / 下导航 |
-| `G` | 跳到底部 |
-| `Enter` | 选择会话 / 展开详情 |
-| `[` / `]` | 切换会话（任意视图） |
-| `/` | 过滤当前列表 |
-| `t` | 切换时间范围（今日 → 本周 → 本月 → 全部） |
-| `p` | 切换平台过滤（全部 / Claude / Codex） |
-| `s` | 切换排序（最近 / 费用） |
-| `c` | 复制会话恢复命令 |
-| `r` | 复制当前会话分享战报 |
-| `Esc` | 清除过滤 |
-| `q` | 退出 |
+> v0.x 历史形态中，`tm` 会进入 Bubbletea TUI。v1.0 起 TUI 已移除，`tm` 默认显示 daily 报表。旧命令迁移见 [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md)。
 
 ## Web Dashboard
 
@@ -184,12 +152,12 @@ tm web --port 9000  # 自定义端口
 
 ## 架构
 
-顶部的架构图展示了完整数据流。下面是组件职责速查：
+交互版架构图展示了完整数据流。下面是组件职责速查：
 
-- **Daemon** — 通过 Unix socket 接收 Claude hook 事件，存入 SQLite，实时广播给 TUI / Web
+- **Daemon** — 通过 Unix socket 接收 Claude hook 事件，存入 SQLite，实时广播给 `tm watch` / Web
 - **Claude hooks** — `PreToolUse` / `PostToolUse` / `SessionStart` / `SessionEnd` 等 8 个事件
 - **日志监听器** — Claude watcher 扫描 `~/.claude/projects/` 的 JSONL 提取 token；Codex watcher 轮询 `~/.codex/sessions/`，内存去重
-- **TUI** — bubbletea 四视图（Dashboard / Messages / Tool Calls / Timeline），订阅 daemon 实时事件
+- **CLI** — `daily` / `weekly` / `monthly` / `session` / `blocks` / `statusline` 等命令读取 SQLite 或本地 source 日志输出报表
 - **Web** — 独立 HTTP 服务 + 嵌入式 SPA，读取 SQLite，提供 REST API 与费用报表
 
 > 交互版架构图（主题切换 + PNG/SVG 导出）：[`docs/architecture.html`](docs/architecture.html)
@@ -205,7 +173,7 @@ tm web --port 9000  # 自定义端口
 >                                                    │
 >                                          SQLite (~/.tokenmeter/data/tokenmeter.db)
 >                                                    │
->                                       tm TUI  ◄─────┴─────►  tm web
+>                                    tm daily/session/blocks  ◄─────┴─────►  tm web
 > ```
 
 ## 数据存储

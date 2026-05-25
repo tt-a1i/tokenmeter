@@ -23,7 +23,7 @@
 
 ---
 
-> Monitor token consumption, costs, tool calls, and file changes across your Claude Code and Codex sessions — all in a single terminal dashboard.
+> Monitor token consumption, costs, tool calls, and file changes across Claude Code, Codex, and other AI coding agents with CLI reports and a local Web Dashboard.
 
 <p align="center">
   <img width="732" alt="Dashboard" src="https://github.com/user-attachments/assets/06664199-5860-484c-818c-0b3257313dde" />
@@ -33,27 +33,19 @@
   <img width="711" alt="Tool Calls" src="https://github.com/user-attachments/assets/32d70f5b-e6ab-48be-98c0-12209ddcd621" />
 </p>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/architecture-light.svg">
-    <img src="docs/architecture.svg" alt="tokenmeter architecture diagram" width="100%">
-  </picture>
-</p>
-
 ## Features
 
 - **Multi-platform** — Claude Code + Codex in one unified view
 - **Token tracking** — input, output, cache creation, cache read — per session, per model
 - **Cost estimation** — model-aware pricing (Opus / Sonnet / Haiku / GPT-5 / GPT-4.1)
-- **7-day cost chart** — vertical bar chart in Stats view showing daily spend at a glance
+- **Cost trends** — Web Dashboard charts, heatmaps, and model/tool breakdowns show daily spend at a glance
 - **Tool call traces** — name, params, result, duration, success/failure status
 - **Conversation messages** — browse user prompts within each session, with `/` search
 - **Session tags** — `tm tag <id> "note"` to label sessions for easy recall
 - **Time range stats** — Today / Week / Month / All token & cost aggregation
 - **Share recaps** — `tm share [session]` creates a compact Markdown session recap for sharing or handoff
-- **Live updates** — daemon broadcasts events, TUI refreshes in real time
-- **Zero config** — first `tm` run auto-installs hooks, single binary, no dependencies
+- **Live updates** — daemon broadcasts events to `tm watch` and the Web Dashboard
+- **Single binary** — run `tm setup` to install hooks, then collect locally without external services
 
 ## Supported Platforms
 
@@ -117,58 +109,34 @@ Per-source subcommands and log paths are in [docs/MIGRATION-v1.1.md](docs/MIGRAT
 
 | Command | Description |
 |---------|-------------|
-| `tm` | Start TUI (auto-starts daemon) |
+| `tm` | Same as `tm daily`; shows the daily token / cost summary |
 | `tm daemon` | Start daemon only |
-| `tm status` | Quick session summary |
-| `tm report [session]` | Detailed text report |
-| `tm report --weekly` | Markdown weekly cost report |
-| `tm report --monthly` | Markdown monthly cost report |
+| `tm daily` / `tm weekly` / `tm monthly` | Aggregate all sources by day / week / month |
+| `tm session [id]` | Per-session breakdown, optionally filtered by id |
+| `tm blocks [--active]` | 5-hour blocks, burn rate, and projection |
+| `tm statusline` | Claude Code statusline provider |
+| `tm watch [opts]` | Stream daemon events from the socket |
 | `tm share [session]` | Shareable Markdown session recap |
-| `tm cost [period]` | Token usage statistics (period: today / week / month / 3month / year / all) |
+| `tm export [opts]` | CSV / JSON export |
 | `tm web [--port N]` | Start Web Dashboard (default port 8370) |
 | `tm clean [days]` | Remove sessions older than N days (default: 7) |
 | `tm tag <id> [text]` | Tag a session with a note (omit text to clear) |
+| `tm budget <subcommand>` | Manage budgets |
+| `tm webhook <subcommand>` | Manage webhook endpoints |
 | `tm setup` | Configure Claude Code hooks |
 | `tm uninstall` | Remove hooks and stop daemon |
 | `tm version` | Show version |
 
-## TUI Views
-
-Press **Tab** to switch between views:
-
-| View | Content |
-|------|---------|
-| **Dashboard** | Session list with cost, context usage, status, tags; summary bar with time range toggle (`t` key) |
-| **Messages** | User conversation messages from Claude / Codex JSONL logs, with `/` search |
-| **Tool Calls** | Real-time tool call stream with duration and expand/collapse details |
-| **Stats** | 7-day cost bar chart, tool usage stats, agent breakdown, file change summary |
-
-## Keybindings
-
-| Key | Action |
-|-----|--------|
-| `Tab` / `Shift+Tab` | Switch view |
-| `j` / `k` | Navigate up / down |
-| `G` | Jump to bottom |
-| `Enter` | Select session / expand details |
-| `[` / `]` | Switch session (any view) |
-| `/` | Filter current list |
-| `t` | Cycle time range (Today → Week → Month → All) |
-| `p` | Cycle platform filter (All / Claude / Codex) |
-| `s` | Cycle sort order (Recent / Cost) |
-| `c` | Copy session resume command |
-| `r` | Copy shareable session recap |
-| `Esc` | Clear filter |
-| `q` | Quit |
+> In the historical v0.x shape, `tm` entered a Bubbletea TUI. The TUI was removed in v1.0; `tm` now defaults to the daily report. See [docs/MIGRATION-v1.0.md](docs/MIGRATION-v1.0.md) for the old-to-new command mapping.
 
 ## Architecture
 
-The diagram at the top shows the full data flow. Component cheat sheet:
+The interactive architecture diagram shows the full data flow. Component cheat sheet:
 
-- **Daemon** — receives Claude hook events over a Unix socket, persists them to SQLite, and broadcasts live events to TUI / Web
+- **Daemon** — receives Claude hook events over a Unix socket, persists them to SQLite, and broadcasts live events to `tm watch` / Web
 - **Claude hooks** — 8 events: `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, etc.
 - **Log watchers** — Claude watcher scans JSONL under `~/.claude/projects/` for tokens; Codex watcher polls `~/.codex/sessions/` with in-memory deduplication
-- **TUI** — bubbletea with four views (Dashboard / Messages / Tool Calls / Timeline), subscribes to the daemon's live event stream
+- **CLI** — `daily` / `weekly` / `monthly` / `session` / `blocks` / `statusline` read SQLite or local source logs and render reports
 - **Web** — standalone HTTP server + embedded SPA, reads SQLite, serves REST API and cost reports
 
 > Interactive diagram (theme toggle + PNG/SVG export): [`docs/architecture.html`](docs/architecture.html)
@@ -184,7 +152,7 @@ The diagram at the top shows the full data flow. Component cheat sheet:
 >                                                    │
 >                                          SQLite (~/.tokenmeter/data/tokenmeter.db)
 >                                                    │
->                                       tm TUI  ◄─────┴─────►  tm web
+>                                    tm daily/session/blocks  ◄─────┴─────►  tm web
 > ```
 
 ## Data Storage

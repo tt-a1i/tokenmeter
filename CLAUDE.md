@@ -4,7 +4,7 @@
 
 TokenMeter 是一个 AI 编码 Agent 本地用量仪表盘，监控 Claude Code 和 Codex 的 Token 消耗、费用、工具调用、文件变更等。
 
-**技术栈：** Go 1.24 · Bubbletea TUI · SQLite (modernc, 纯 Go) · Unix socket
+**技术栈：** Go 1.24 · SQLite (modernc, 纯 Go) · Unix socket · CLI reports · 嵌入式 Web Dashboard
 
 ---
 
@@ -19,7 +19,7 @@ Codex JSONL 日志 ──→ CodexWatcher ─┘
                                    │
                             SQLite (~/.tokenmeter/data/tokenmeter.db)
                                    │
-                             tm (bubbletea TUI)
+                             tm CLI reports / tm watch
                                    │
                              tm web (HTTP Dashboard)
 ```
@@ -34,7 +34,8 @@ Codex JSONL 日志 ──→ CodexWatcher ─┘
 | collector/codex | `internal/collector/codex.go` | 轮询 Codex JSONL 日志 → 统一 Event |
 | collector/cost | `internal/collector/cost.go` / `pricing.go` | Claude / Codex 费用估算 |
 | storage | `internal/storage/` | SQLite schema、读写、查询 |
-| tui | `internal/tui/*.go` | Bubbletea TUI，4 个 tab |
+| cli | `cmd/tm/cli/` | ccusage 风格命令解析、shared flags、adapter 路由 |
+| render | `internal/render/` | CLI 表格 / JSON 输出 |
 | web | `internal/web/` | HTTP Dashboard（REST API + 嵌入式 SPA 前端） |
 | event | `internal/event/event.go` | 统一事件类型定义 |
 
@@ -48,11 +49,10 @@ make install        # 编译并复制到 $GOPATH/bin/tm
 go test ./...       # 运行所有测试
 go vet ./...        # 静态检查
 
-# 启动命令统一为 tm；首次运行会自动写入 ~/.claude/settings.json hooks
-tm                  # 启动 TUI（自动启动 daemon、自动 setup hooks）
+tm setup            # 首次运行：写入 ~/.claude/settings.json hooks
+tm                  # 默认等同 tm daily，显示每日 Token / 费用汇总
 tm daemon           # 仅启动 daemon（自动 setup hooks）
 tm web              # 启动 Web Dashboard（自动 setup hooks）
-tm setup            # 手动重写 hooks（修复用，平时不需要）
 tm uninstall        # 移除 hooks 并停 daemon
 ```
 
@@ -171,23 +171,22 @@ Pre/Post 工具调用通过相同的 `ID`（`tool_use_id`）在 daemon 里关联
 
 ---
 
-## TUI 结构
+## CLI 结构
 
-4 个 tab（`internal/tui/view*.go` + `model.go`）：
+当前 `tm` 是 ccusage 风格的命令面，不再启动交互式终端界面。无参数会进入 `runCLIDispatch(nil)`，再由 `cmd/tm/cli/router.go` 路由到 `daily`。
 
-| Tab | 常量 | 数据来源 |
-|-----|------|---------|
-| Dashboard | `tabDashboard` | `db.ListSessions()` |
-| Messages | `tabMessages` | `collector.ReadUserMessages(platform, sessionID, cwd, 200)` |
-| Tool Calls | `tabToolCalls` | `db.ListToolCalls(selectedSession, 500)` |
-| Timeline | `tabTimeline` | agents + toolCalls + fileChanges 合并排序 |
+核心命令树：
 
-TUI 每 2 秒轮询（`tickCmd`），也会在 daemon 广播事件时立即刷新（`listenEvents`）。
-过滤列表在数据变化或 filter 变化时预计算，不在每次渲染时重算；`expandedCalls` 会在 refresh 时按当前 session 数据修剪。
+| 类别 | 命令 | 说明 |
+|------|------|------|
+| Setup | `setup` / `init` / `doctor` / `uninstall` | hooks、诊断、卸载 |
+| Run modes | `daemon` / `web` / `watch` | 前台 daemon、Web Dashboard、实时事件流 |
+| Usage summary | `daily` / `weekly` / `monthly` / `session` / `blocks` / `statusline` | 聚合报表、5 小时窗口、Claude statusline |
+| Analysis | `analyze` / `search` / `compare` / `export` | 洞察、搜索、对比、导出 |
+| Config | `tag` / `budget` / `webhook` | 会话标签、预算、webhook endpoint |
+| Batch adapters | `amp` / `opencode` / `gemini` / `copilot` / `goose` / `codebuff` / `hermes` / `kilo` / `kimi` / `openclaw` / `pi` / `droid` / `qwen` | source-specific daily/weekly/monthly/session 路由 |
 
-**选中状态：**
-- `selectedSession` — 当前查看的 session 索引（在 sessions slice 中）
-- `selectedRow` — 当前高亮行索引（在当前 tab 的列表中）
+`cmd/tm/cli/cli.go` 解析 shared flags（date range、JSON、mode、timezone、project、config、session length 等），`internal/render/` 负责表格与 JSON 输出。
 
 ---
 
@@ -196,17 +195,17 @@ TUI 每 2 秒轮询（`tickCmd`），也会在 daemon 广播事件时立即刷�
 ### 已完成
 
 - [x] Claude token 永远为 0 → ClaudeLogWatcher 扫描 JSONL，INSERT OR IGNORE 防重复
-- [x] TUI j 键越界 → bounds check + refresh 时 clamp
+- [x] v0.x 历史：TUI j 键越界 → bounds check + refresh 时 clamp（TUI 已在 v1.0 移除）
 - [x] Enter 展开工具调用详情 → expandedCalls map，by call_id
 - [x] Session 显示原始 UUID → gitBranch > filepath.Base(cwd) > UUID
-- [x] 无法在非 Dashboard tab 切换 session → [/] 键
-- [x] TUI 错误不显示 → footer 区域展示 m.err
+- [x] v0.x 历史：无法在非 Dashboard tab 切换 session → [/] 键（TUI 已在 v1.0 移除）
+- [x] v0.x 历史：TUI 错误不显示 → footer 区域展示 m.err（TUI 已在 v1.0 移除）
 - [x] pending 工具调用永不清理 → SessionEnd 时 MarkPendingToolCallsInterrupted
 - [x] 僵尸 Session → daemon 启动时 `MarkStaleSessionsEnded(2h)` 清理长时间未结束会话
 - [x] Token 重复计数（重启后）→ source_id 唯一索引 + INSERT OR IGNORE
-- [x] 会话列表展示成本与上下文占用 → Dashboard 显示 `COST` / `CTX` 列与底部 session 预览
-- [x] session 列表无滚动 → viewOffset + adjustScroll，所有 tab 均支持
-- [x] Timeline 排序 O(n²) → sort.Slice
+- [x] v0.x 历史：会话列表展示成本与上下文占用 → Dashboard 显示 `COST` / `CTX` 列与底部 session 预览（TUI 已在 v1.0 移除）
+- [x] v0.x 历史：session 列表无滚动 → viewOffset + adjustScroll，所有 tab 均支持（TUI 已在 v1.0 移除）
+- [x] v0.x 历史：Timeline 排序 O(n²) → sort.Slice（TUI 已在 v1.0 移除）
 - [x] Makefile 增加 test / lint target
 
 ### 待完成（仅发布相关）
@@ -224,7 +223,8 @@ TUI 每 2 秒轮询（`tickCmd`），也会在 daemon 广播事件时立即刷�
 | `internal/event` | ✅ | event_test.go |
 | `internal/storage` | ✅ | db_test.go |
 | `internal/daemon` | ✅ | daemon_test.go |
-| `internal/tui` | ✅ | model_test.go |
+| `internal/render` | ✅ | boxed/json render tests |
+| `internal/statusline` | ✅ | statusline tests |
 | `internal/web` | ✅ | server_test.go |
 | `cmd/tm` | ✅ | cli_test.go |
 
@@ -234,7 +234,7 @@ TUI 每 2 秒轮询（`tickCmd`），也会在 daemon 广播事件时立即刷�
 
 ## 代码约定
 
-- 错误处理：底层函数返回 `error`；daemon 和 TUI 层用 `log.Printf` 记录非致命错误
+- 错误处理：底层函数返回 `error`；daemon 记录非致命错误，CLI/Web 在边界层返回或展示错误
 - 不用 `panic`，不用 `log.Fatal`（除 main 函数初始化阶段）
 - SQLite 查询：时间存为 `TEXT`（RFC3339 格式），读取时用 `parseTime()`
 - 事件 ID：Claude 用 `tool_use_id`（由 Claude Code 提供，保证唯一）；Codex 用 `call_id`

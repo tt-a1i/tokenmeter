@@ -160,7 +160,7 @@
         <div class="pulse-dot"></div>
         <h1>TokenMeter — AI Agent Observability Architecture</h1>
       </div>
-      <p class="subtitle">Unified observability for Claude Code + Codex — hooks, log watchers, SQLite, TUI &amp; Web</p>
+      <p class="subtitle">Unified observability for Claude Code + Codex — hooks, log watchers, SQLite, CLI &amp; Web</p>
     </div>
 
     <!-- Main Diagram -->
@@ -220,11 +220,11 @@
         <line x1="800" y1="320" x2="830" y2="320" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <text x="815" y="314" fill="#64748b" font-size="8" text-anchor="middle">write</text>
 
-        <!-- daemon → TUI (live event broadcast, emerald) -->
+        <!-- daemon → CLI watch (live event broadcast, emerald) -->
         <path d="M 800 180 L 895 180 L 895 140 L 1010 140" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
         <text x="945" y="132" fill="#059669" font-size="8.5" text-anchor="middle">events (live)</text>
 
-        <!-- SQLite → TUI -->
+        <!-- SQLite → CLI reports -->
         <path d="M 925 240 L 925 210 L 1010 210" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <text x="960" y="204" fill="#64748b" font-size="8" text-anchor="middle">read</text>
 
@@ -329,20 +329,20 @@
 
         <text x="900" y="392" fill="#7c3aed" font-size="7.5" text-anchor="middle">modernc · pure Go</text>
 
-        <!-- TUI (Frontend — cyan) -->
+        <!-- CLI (Frontend — cyan) -->
         <rect x="1010" y="100" width="170" height="160" rx="6" fill="#ffffff"/>
         <rect x="1010" y="100" width="170" height="160" rx="6" fill="rgba(34, 211, 238, 0.15)" stroke="#0891b2" stroke-width="1.5"/>
-        <text x="1095" y="124" fill="#0f172a" font-size="13" font-weight="700" text-anchor="middle">tm TUI</text>
-        <text x="1095" y="140" fill="#64748b" font-size="9" text-anchor="middle">Bubbletea terminal UI</text>
+        <text x="1095" y="124" fill="#0f172a" font-size="13" font-weight="700" text-anchor="middle">tm CLI</text>
+        <text x="1095" y="140" fill="#64748b" font-size="9" text-anchor="middle">ccusage-style reports</text>
 
         <line x1="1026" y1="150" x2="1164" y2="150" stroke="#0891b2" stroke-width="0.6" opacity="0.4"/>
 
-        <text x="1026" y="170" fill="#0f172a" font-size="9">• Dashboard</text>
-        <text x="1026" y="186" fill="#0f172a" font-size="9">• Messages</text>
-        <text x="1026" y="202" fill="#0f172a" font-size="9">• Tool Calls</text>
-        <text x="1026" y="218" fill="#0f172a" font-size="9">• Stats</text>
+        <text x="1026" y="170" fill="#0f172a" font-size="9">• daily / weekly / monthly</text>
+        <text x="1026" y="186" fill="#0f172a" font-size="9">• session / blocks</text>
+        <text x="1026" y="202" fill="#0f172a" font-size="9">• watch event stream</text>
+        <text x="1026" y="218" fill="#0f172a" font-size="9">• export CSV / JSON</text>
 
-        <text x="1095" y="242" fill="#0891b2" font-size="8" text-anchor="middle">real-time event subscription</text>
+        <text x="1095" y="242" fill="#0891b2" font-size="8" text-anchor="middle">SQLite reports + live watch</text>
 
         <!-- Web Dashboard -->
         <rect x="1010" y="360" width="170" height="160" rx="6" fill="#ffffff"/>
@@ -396,7 +396,7 @@
           <li>• Unix socket transport</li>
           <li>• Event unification (Claude + Codex)</li>
           <li>• Cost estimator with model-aware pricing</li>
-          <li>• Live pub/sub broadcaster to TUI</li>
+          <li>• Live pub/sub broadcaster for watch/web consumers</li>
           <li>• SessionEnd cleanup, stale-session GC</li>
         </ul>
       </div>
@@ -422,9 +422,9 @@
           <h3>User Interfaces</h3>
         </div>
         <ul>
-          <li>• TUI: 4 tabs (Dashboard / Messages / Tool Calls / Stats)</li>
-          <li>• TUI: keyboard nav (j/k, Tab, / filter)</li>
-          <li>• TUI: 2s poll + live event push</li>
+          <li>• CLI: daily / weekly / monthly summaries</li>
+          <li>• CLI: session / blocks reports</li>
+          <li>• CLI: watch live daemon events</li>
           <li>• Web: REST API + embedded SPA</li>
           <li>• Web: cost area chart, session detail</li>
           <li>• Web: dark / light mode auto-detect</li>
@@ -434,7 +434,7 @@
 
     <!-- Footer -->
     <p class="footer">
-      TokenMeter · Go 1.24 · Bubbletea TUI · SQLite (modernc, pure-Go) · MIT License
+      TokenMeter · Go 1.24 · CLI reports · SQLite (modernc, pure-Go) · MIT License
     </p>
   </div>
 
