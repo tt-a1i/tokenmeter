@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>TokenMeter — A precision meter for AI coding agents</title>
-<meta name="description" content="A local-first usage meter for Claude Code, Codex and 13 other AI coding agents. Real-time hooks, LiteLLM-accurate pricing, a live dashboard — entirely on your machine." />
+<title>TokenMeter — 给 AI 编程 Agent 的本地用量仪表盘</title>
+<meta name="description" content="为 Claude Code、Codex 等 15 个 AI 编程 Agent 打造的本地优先用量仪表盘。实时 hooks、LiteLLM 精准计费、实时仪表盘——全部跑在你自己的电脑上。" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="TokenMeter — A precision meter for AI coding agents" />
-<meta property="og:description" content="Local-first usage meter for 15 AI coding agents. Real-time hooks, accurate pricing, live dashboard. MIT." />
-<meta property="og:url" content="https://tt-a1i.github.io/tokenmeter/" />
+<meta property="og:title" content="TokenMeter — 给 AI 编程 Agent 的本地用量仪表盘" />
+<meta property="og:description" content="为 15 个 AI 编程 Agent 打造的本地用量仪表盘。实时 hooks、精准计费、实时仪表盘。MIT 协议。" />
+<meta property="og:url" content="https://tt-a1i.github.io/tokenmeter/zh.html" />
+<meta property="og:locale" content="zh_CN" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23b6ff5c'/><path d='M55 15L25 55h25l-5 30 30-40H50l5-30z' fill='%230a0a0b'/></svg>" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -576,19 +577,19 @@
       <span class="brand-name">TokenMeter <span class="ver">v1.2</span></span>
     </div>
     <div class="nav-links">
-      <a href="#bento">Live</a>
+      <a href="#bento">实时</a>
       <a href="#agents">Agents</a>
       <a href="#cli">CLI</a>
-      <a href="#install">Install</a>
-      <a href="https://github.com/tt-a1i/tokenmeter#readme" target="_blank" rel="noopener">Docs</a>
+      <a href="#install">安装</a>
+      <a href="https://github.com/tt-a1i/tokenmeter#readme" target="_blank" rel="noopener">文档</a>
     </div>
     <div class="nav-cta">
       <span class="lang-switch">
-        <a href="./" class="active">EN</a>
-        <a href="./zh.html">中文</a>
+        <a href="./">EN</a>
+        <a href="./zh.html" class="active">中文</a>
       </span>
       <a href="https://github.com/tt-a1i/tokenmeter" target="_blank" rel="noopener" class="btn btn-ghost">GitHub ↗</a>
-      <a href="#install" class="btn btn-lime">Install <span class="arrow">→</span></a>
+      <a href="#install" class="btn btn-lime">安装 <span class="arrow">→</span></a>
     </div>
   </div>
 </nav>
@@ -598,21 +599,21 @@
   <div class="wrap">
     <div class="hero-eyebrow">
       <span class="badge"><span class="pulse"></span>&nbsp;LIVE</span>
-      <span>v1.2 · LiteLLM pricing · 15 agents · MIT</span>
+      <span>v1.2 · LiteLLM 计费 · 15 个 Agent · MIT</span>
     </div>
 
     <h1 class="display">
-      <span class="stk">Guessing</span> every<br />
-      token your agents<br />
-      <span class="lime">actually</span> spend.
+      <span class="stk">猜测</span> 你的 Agent<br />
+      <span class="lime">到底</span><br />
+      花了多少 Token。
     </h1>
 
     <p class="hero-sub">
-      TokenMeter is a <strong>local-first</strong> usage meter for Claude Code, Codex, and 13 other AI coding agents. Real-time hooks. LiteLLM-accurate pricing. A live dashboard — entirely on your machine.
+      TokenMeter 是一个 <strong>本地优先</strong> 的用量监测工具，覆盖 Claude Code、Codex 和另外 13 款 AI 编程 Agent。实时 hooks、LiteLLM 精准计费、实时仪表盘——一切都跑在你自己的电脑上。
     </p>
 
     <div class="hero-actions">
-      <a href="#install" class="btn btn-lime">Install TokenMeter <span class="arrow">→</span></a>
+      <a href="#install" class="btn btn-lime">安装 TokenMeter <span class="arrow">→</span></a>
       <div class="hero-install">
         <span class="dollar">$</span>
         <span>brew install --cask tt-a1i/tap/tm</span>
@@ -627,30 +628,30 @@
 <!-- ============================ BENTO ============================ -->
 <section class="wrap" id="bento">
   <div class="group-head">
-    <h3><span class="lime">Live</span> · what TokenMeter sees right now</h3>
-    <div class="meta">data refreshed 4s ago · sqlite read</div>
+    <h3><span class="lime">实时</span> · TokenMeter 此刻看到的</h3>
+    <div class="meta">数据 4 秒前刷新 · SQLite 读取</div>
   </div>
 
   <div class="bento">
     <!-- BIG SPEND -->
     <div class="cell spend c-5 r-3">
       <div class="cell-head">
-        <span>SPEND · MAY 2026</span>
+        <span>本月花费 · 2026.05</span>
         <span class="dot"></span>
       </div>
       <div class="cell-body">
         <div class="spend-val"><span class="currency">$</span><span id="spend-int">284</span><span class="frac">.<span id="spend-frac">62</span></span></div>
-        <div class="spend-sub">↑ <span class="gain">18.2%</span> vs Apr · <span class="lime">71%</span> of $400 budget</div>
+        <div class="spend-sub">↑ <span class="gain">18.2%</span> 环比 4 月 · 已用 <span class="lime">71%</span> / $400 预算</div>
         <div class="spend-bar"><div></div></div>
-        <div class="spend-bar-meta"><span>$0</span><span class="v">$400 budget</span></div>
+        <div class="spend-bar-meta"><span>$0</span><span class="v">$400 预算</span></div>
       </div>
-      <div class="cell-foot">7 PROJECTS · 12 MODELS · 187 SESSIONS</div>
+      <div class="cell-foot">7 个项目 · 12 个模型 · 187 个会话</div>
     </div>
 
     <!-- 5-HOUR BLOCK METER -->
     <div class="cell c-3 r-3">
       <div class="cell-head">
-        <span>5-HOUR BLOCK</span>
+        <span>5 小时窗口</span>
         <span class="dot amber"></span>
       </div>
       <div class="cell-body meter">
@@ -670,18 +671,18 @@
           <div class="meter-lbl">14:00 → 19:00</div>
         </div>
       </div>
-      <div class="cell-foot">BURN <strong>340 tok/min</strong> · PROJ <strong>18:42</strong></div>
+      <div class="cell-foot">速率 <strong>340 tok/分</strong> · 预计 <strong>18:42</strong> 达限</div>
     </div>
 
     <!-- TOKENS SPARKLINE -->
     <div class="cell c-4 r-3 spark-cell">
       <div class="cell-head">
-        <span>TOKENS · 14 DAYS</span>
+        <span>Token 用量 · 近 14 天</span>
         <span class="dot blue"></span>
       </div>
       <div class="cell-body">
         <div class="spark-val">12.4<span class="unit">M</span></div>
-        <div class="cell-foot" style="margin-top:6px">↓ <span class="dn">3.1%</span> vs prev · avg 412k / day</div>
+        <div class="cell-foot" style="margin-top:6px">↓ <span class="dn">3.1%</span> 环比 · 日均 412k</div>
         <div class="spark-graph">
           <svg viewBox="0 0 320 60" preserveAspectRatio="none">
             <defs>
@@ -701,8 +702,8 @@
     <!-- LIVE EVENT FEED -->
     <div class="cell c-7 r-3">
       <div class="cell-head">
-        <span><span class="dot" style="display:inline-block;margin-right:6px;vertical-align:middle"></span>LIVE EVENT STREAM · tm watch</span>
-        <span class="id">SOCKET ATTACHED</span>
+        <span><span class="dot" style="display:inline-block;margin-right:6px;vertical-align:middle"></span>实时事件流 · tm watch</span>
+        <span class="id">SOCKET 已连接</span>
       </div>
       <div class="cell-body">
         <div class="feed" id="feed"></div>
@@ -712,7 +713,7 @@
     <!-- MODEL BREAKDOWN -->
     <div class="cell c-5 r-3">
       <div class="cell-head">
-        <span>COST BY MODEL · 30D</span>
+        <span>各模型花费 · 近 30 天</span>
         <span class="id">USD</span>
       </div>
       <div class="cell-body models">
@@ -723,25 +724,25 @@
         <div class="model-row"><span class="name">haiku-4</span><span class="track"><span class="fill" style="width:6%; background: linear-gradient(90deg, #f0abfc, #d946ef)"></span></span><span class="v">$8.71</span></div>
         <div class="model-row"><span class="name">gemini-2.5</span><span class="track"><span class="fill" style="width:3%; background: linear-gradient(90deg, #5eead4, #14b8a6)"></span></span><span class="v">$4.42</span></div>
       </div>
-      <div class="cell-foot">12 MODELS ACTIVE · LITELLM v1.74 · 24H TTL</div>
+      <div class="cell-foot">12 个模型在用 · LITELLM v1.74 · 24 小时 TTL</div>
     </div>
 
     <!-- HEATMAP -->
     <div class="cell c-8 r-3">
       <div class="cell-head">
-        <span>USAGE HEATMAP · 280 HOURS</span>
-        <span class="id">UTC · GREEN = HOT</span>
+        <span>使用热力图 · 280 小时</span>
+        <span class="id">UTC · 绿色 = 高峰</span>
       </div>
       <div class="cell-body" style="display:flex; flex-direction:column; gap:14px; padding-top:4px;">
         <div class="heatmap" id="heatmap"></div>
         <div class="cell-foot" style="display:flex; justify-content:space-between;">
-          <span>14 DAYS · MAY 12 → MAY 25</span>
+          <span>14 天 · 5 月 12 日 → 5 月 25 日</span>
           <span style="display:flex;align-items:center;gap:5px">
             <span style="display:inline-block;width:10px;height:10px;background:var(--bg-3);border-radius:2px"></span>
             <span style="display:inline-block;width:10px;height:10px;background:rgba(182,255,92,0.3);border-radius:2px"></span>
             <span style="display:inline-block;width:10px;height:10px;background:rgba(182,255,92,0.6);border-radius:2px"></span>
             <span style="display:inline-block;width:10px;height:10px;background:var(--lime);border-radius:2px"></span>
-            <span style="margin-left:6px">low → high</span>
+            <span style="margin-left:6px">低 → 高</span>
           </span>
         </div>
       </div>
@@ -750,20 +751,20 @@
     <!-- CLAIM 1 -->
     <div class="cell claim-cell c-4 r-3">
       <div class="cell-head">
-        <span>SUPPORTED SOURCES</span>
+        <span>支持的 AGENT</span>
         <span class="id">v1.2</span>
       </div>
       <div class="cell-body" style="display:flex; flex-direction:column; justify-content:center;">
-        <div class="claim-num"><span class="lime">15</span> <span class="unit">agents</span></div>
-        <div class="claim-desc">Claude Code, Codex, OpenCode, Amp, Gemini CLI, Copilot, Goose, Codebuff, Hermes, Kilo, Kimi, OpenClaw, pi-agent, Droid &amp; Qwen.</div>
+        <div class="claim-num"><span class="lime">15</span> <span class="unit">个 Agent</span></div>
+        <div class="claim-desc">Claude Code、Codex、OpenCode、Amp、Gemini CLI、Copilot、Goose、Codebuff、Hermes、Kilo、Kimi、OpenClaw、pi-agent、Droid 和 Qwen。</div>
       </div>
     </div>
 
     <!-- BLOCKS / SESSIONS LIVE -->
     <div class="cell c-5 r-2">
       <div class="cell-head">
-        <span>5H BLOCKS · TODAY</span>
-        <span class="id">5 SLOTS</span>
+        <span>今日 5H 窗口</span>
+        <span class="id">5 段</span>
       </div>
       <div class="cell-body blocks">
         <div class="block-bar">
@@ -776,35 +777,35 @@
         <div class="block-meta">
           <span>00:00</span><span>05:00</span><span>10:00</span><span class="lime">15:00</span><span class="amber">20:00</span>
         </div>
-        <div class="cell-foot">CURRENT <strong>14:00 → 19:00</strong> · 82% LIMIT · PROJ 18:42</div>
+        <div class="cell-foot">当前 <strong>14:00 → 19:00</strong> · 82% 上限 · 预计 18:42</div>
       </div>
     </div>
 
     <!-- BUDGETS -->
     <div class="cell c-3 r-2">
       <div class="cell-head">
-        <span>BUDGET · MAY</span>
+        <span>预算 · 5 月</span>
         <span class="id">$400.00</span>
       </div>
       <div class="cell-body stack" style="padding-top: 8px">
-        <div class="kv"><span class="k">Spent</span><span class="v">$284.62</span></div>
-        <div class="kv"><span class="k">Remaining</span><span class="v lime">$115.38</span></div>
-        <div class="kv"><span class="k">Pace</span><span class="v amber">+12%</span></div>
-        <div class="kv"><span class="k">Alert at</span><span class="v">90%</span></div>
+        <div class="kv"><span class="k">已用</span><span class="v">$284.62</span></div>
+        <div class="kv"><span class="k">剩余</span><span class="v lime">$115.38</span></div>
+        <div class="kv"><span class="k">节奏</span><span class="v amber">+12%</span></div>
+        <div class="kv"><span class="k">预警阈值</span><span class="v">90%</span></div>
       </div>
     </div>
 
     <!-- TOOL ERRORS -->
     <div class="cell c-4 r-2">
       <div class="cell-head">
-        <span><span class="dot red" style="display:inline-block;margin-right:6px;vertical-align:middle"></span>TOOL ERRORS · 7D</span>
+        <span><span class="dot red" style="display:inline-block;margin-right:6px;vertical-align:middle"></span>工具调用错误 · 7 天</span>
         <span class="id">tm analyze</span>
       </div>
       <div class="cell-body tool-list">
         <div class="tool-row"><span class="tool">Bash</span><span class="err">"command not found"</span><span class="count">42</span></div>
         <div class="tool-row"><span class="tool">Edit</span><span class="err">"string not found"</span><span class="count">18</span></div>
         <div class="tool-row"><span class="tool">Read</span><span class="err">"file does not exist"</span><span class="count">9</span></div>
-        <div class="tool-row"><span class="tool">Grep</span><span class="err">timeout · large repo</span><span class="count">4</span></div>
+        <div class="tool-row"><span class="tool">Grep</span><span class="err">超时 · 大仓库</span><span class="count">4</span></div>
       </div>
     </div>
 
@@ -820,45 +821,45 @@
     <!-- ARCHITECTURE / DAEMON HEALTH -->
     <div class="cell c-5 r-2">
       <div class="cell-head">
-        <span>DAEMON HEALTH</span>
-        <span class="id" style="color:var(--lime)">● ONLINE</span>
+        <span>Daemon 状态</span>
+        <span class="id" style="color:var(--lime)">● 在线</span>
       </div>
       <div class="cell-body stack">
-        <div class="kv"><span class="k">Uptime</span><span class="v">128h 42m</span></div>
+        <div class="kv"><span class="k">运行时长</span><span class="v">128h 42m</span></div>
         <div class="kv"><span class="k">Socket</span><span class="v">/tmp/tokenmeter.sock</span></div>
-        <div class="kv"><span class="k">Hooks attached</span><span class="v lime">8 / 8</span></div>
-        <div class="kv"><span class="k">Hook latency</span><span class="v lime">~14ms p95</span></div>
-        <div class="kv"><span class="k">DB size</span><span class="v">42.1 MB</span></div>
+        <div class="kv"><span class="k">Hook 已挂载</span><span class="v lime">8 / 8</span></div>
+        <div class="kv"><span class="k">Hook 延迟</span><span class="v lime">~14ms p95</span></div>
+        <div class="kv"><span class="k">数据库大小</span><span class="v">42.1 MB</span></div>
       </div>
     </div>
 
     <!-- WEBHOOKS -->
     <div class="cell c-2 r-2">
       <div class="cell-head">
-        <span>WEBHOOKS</span>
+        <span>Webhook</span>
       </div>
       <div class="cell-body" style="display:flex;flex-direction:column;justify-content:center;">
         <div class="claim-num" style="font-size:48px; letter-spacing:-1.8px">3</div>
-        <div class="cell-foot" style="margin-top:10px">SLACK · DISCORD · CUSTOM</div>
+        <div class="cell-foot" style="margin-top:10px">SLACK · DISCORD · 自定义</div>
       </div>
     </div>
 
     <!-- TELEMETRY / 0 -->
     <div class="cell c-3 r-2 claim-cell">
       <div class="cell-head">
-        <span>TELEMETRY SENT</span>
+        <span>外发遥测</span>
       </div>
       <div class="cell-body" style="display:flex;flex-direction:column;justify-content:center;">
-        <div class="claim-num"><span class="lime">0</span> <span class="unit">bytes</span></div>
-        <div class="claim-desc">Nothing leaves your machine. MIT licensed, ~/.tokenmeter local-only.</div>
+        <div class="claim-num"><span class="lime">0</span> <span class="unit">字节</span></div>
+        <div class="claim-desc">没有任何数据离开你的机器。MIT 协议，数据全部存于本地 ~/.tokenmeter。</div>
       </div>
     </div>
 
     <!-- AGENTS MARQUEE -->
     <div class="cell c-12 r-1" id="agents" style="padding: 18px 20px;">
       <div class="cell-head" style="margin-bottom: 0;">
-        <span>15 AGENTS · 1 TIMELINE</span>
-        <span class="id">AUTO-DISCOVERED</span>
+        <span>15 个 AGENT · 1 条时间线</span>
+        <span class="id">自动发现</span>
       </div>
       <div class="marquee-wrap" style="margin-top:6px;">
         <div class="src-marquee" id="marquee"></div>
@@ -868,11 +869,11 @@
     <!-- CTA -->
     <div class="cell cta-cell c-12 r-4" id="install">
       <div class="cell-body" style="display:flex; flex-direction:column; justify-content:center; align-items:flex-start;">
-        <h2>Start metering in<br /><span class="lime">under a minute.</span></h2>
-        <p>One binary, zero accounts, zero telemetry. Everything lives in <code class="k">~/.tokenmeter</code> — yours alone.</p>
+        <h2>一分钟内<br /><span class="lime">开始计量。</span></h2>
+        <p>一个二进制，无需账号，零遥测。所有数据都存在 <code class="k">~/.tokenmeter</code> 里——只属于你。</p>
         <div class="cta-row">
-          <a href="https://github.com/tt-a1i/tokenmeter/releases/latest" target="_blank" rel="noopener" class="btn btn-lime">Install TokenMeter <span class="arrow">→</span></a>
-          <a href="https://github.com/tt-a1i/tokenmeter" target="_blank" rel="noopener" class="btn btn-line">View on GitHub</a>
+          <a href="https://github.com/tt-a1i/tokenmeter/releases/latest" target="_blank" rel="noopener" class="btn btn-lime">安装 TokenMeter <span class="arrow">→</span></a>
+          <a href="https://github.com/tt-a1i/tokenmeter" target="_blank" rel="noopener" class="btn btn-line">在 GitHub 查看</a>
           <div class="hero-install" style="height:44px">
             <span class="dollar">$</span>
             <span>brew install --cask tt-a1i/tap/tm</span>
@@ -895,44 +896,44 @@
           <span class="brand-mark"><svg viewBox="0 0 100 100"><path d="M55 15L25 55h25l-5 30 30-40H50l5-30z" fill="currentColor"/></svg></span>
           <span class="brand-name">TokenMeter <span class="ver">v1.2</span></span>
         </div>
-        <p class="foot-about">A local-first meter for AI coding agents. Built for engineers who want to know what their tools cost — to the cent.</p>
+        <p class="foot-about">给 AI 编程 Agent 的本地优先用量仪表盘。为想知道自家工具到底花了多少钱的工程师而做——精确到分。</p>
       </div>
       <div>
-        <h5>Product</h5>
+        <h5>产品</h5>
         <ul>
-          <li><a href="#bento">Live dashboard</a></li>
-          <li><a href="#agents">Sources</a></li>
+          <li><a href="#bento">实时仪表盘</a></li>
+          <li><a href="#agents">支持的 Agent</a></li>
           <li><a href="#cli">CLI</a></li>
-          <li><a href="#install">Install</a></li>
+          <li><a href="#install">安装</a></li>
         </ul>
       </div>
       <div>
-        <h5>Resources</h5>
+        <h5>资源</h5>
         <ul>
-          <li><a href="https://github.com/tt-a1i/tokenmeter#readme" target="_blank" rel="noopener">Documentation</a></li>
-          <li><a href="https://github.com/tt-a1i/tokenmeter/blob/main/docs/MIGRATION-v1.1.md" target="_blank" rel="noopener">Migration guide</a></li>
-          <li><a href="https://github.com/tt-a1i/tokenmeter/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a></li>
-          <li><a href="https://github.com/tt-a1i/tokenmeter/blob/main/docs/architecture.html" target="_blank" rel="noopener">Architecture</a></li>
+          <li><a href="https://github.com/tt-a1i/tokenmeter#readme" target="_blank" rel="noopener">文档</a></li>
+          <li><a href="https://github.com/tt-a1i/tokenmeter/blob/main/docs/MIGRATION-v1.1.md" target="_blank" rel="noopener">迁移指南</a></li>
+          <li><a href="https://github.com/tt-a1i/tokenmeter/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+          <li><a href="https://github.com/tt-a1i/tokenmeter/blob/main/docs/architecture.html" target="_blank" rel="noopener">架构</a></li>
         </ul>
       </div>
       <div>
-        <h5>Community</h5>
+        <h5>社区</h5>
         <ul>
           <li><a href="https://github.com/tt-a1i/tokenmeter" target="_blank" rel="noopener">GitHub</a></li>
           <li><a href="https://github.com/tt-a1i/tokenmeter/issues" target="_blank" rel="noopener">Issues</a></li>
           <li><a href="https://github.com/tt-a1i/tokenmeter/discussions" target="_blank" rel="noopener">Discussions</a></li>
-          <li><a href="https://github.com/tt-a1i/tokenmeter/blob/main/LICENSE" target="_blank" rel="noopener">License — MIT</a></li>
+          <li><a href="https://github.com/tt-a1i/tokenmeter/blob/main/LICENSE" target="_blank" rel="noopener">协议 — MIT</a></li>
         </ul>
       </div>
     </div>
     <div class="foot-bottom">
-      <div>© 2026 TokenMeter · Built with Go 1.24+ · local-first</div>
+      <div>© 2026 TokenMeter · Go 1.24+ 构建 · 本地优先</div>
       <div>v1.2.0 · MIT</div>
     </div>
   </div>
 </footer>
 
-<div class="toast" id="toast">copied</div>
+<div class="toast" id="toast">已复制</div>
 
 <script>
   // ---------- HEATMAP ----------
