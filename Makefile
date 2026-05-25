@@ -1,4 +1,4 @@
-.PHONY: build install test lint vet vuln ci coverage clean flaky race
+.PHONY: build install test test-e2e lint vet vuln ci coverage clean flaky race
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo dev)
 
@@ -11,6 +11,9 @@ install: build
 
 test:
 	go test -cover ./...
+
+test-e2e:
+	go test ./cmd/tm/... -run TestE2EV12Smoke -count=1
 
 vet:
 	go vet ./...
