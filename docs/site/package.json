@@ -1,0 +1,18 @@
+{
+  "name": "@tokenmeter/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Documentation site for TokenMeter, the local usage dashboard for AI coding agents.",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
