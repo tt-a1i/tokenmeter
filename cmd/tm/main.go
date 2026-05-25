@@ -80,7 +80,8 @@ func mustOpenDB() *storage.DB {
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	args := normalizeTopLevelArgs(os.Args[1:])
+	if len(args) < 1 {
 		if err := runCLIDispatch(nil); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -88,7 +89,7 @@ func main() {
 		return
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "daemon":
 		ensureHooksInstalled()
 		runDaemon()
@@ -208,18 +209,54 @@ func main() {
 		"cost", "report", "status", "top",
 		"amp", "codebuff", "copilot", "droid", "gemini", "goose", "hermes",
 		"kilo", "kimi", "openclaw", "opencode", "pi", "qwen":
-		if maybePrintCmdHelp(os.Args[1], os.Args[2:]) {
+		if maybePrintCmdHelp(args[0], args[1:]) {
 			return
 		}
-		if err := runCLIDispatch(os.Args[1:]); err != nil {
+		if err := runCLIDispatch(args); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 	default:
-		fmt.Fprint(os.Stderr, unknownCommandHelpMessage(os.Args[1]))
+		fmt.Fprint(os.Stderr, unknownCommandHelpMessage(args[0]))
 		printHelp()
 		os.Exit(1)
 	}
+}
+
+func normalizeTopLevelArgs(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	var globals []string
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		switch {
+		case arg == "--config":
+			if i+1 >= len(args) {
+				return append([]string(nil), args...)
+			}
+			globals = append(globals, arg, args[i+1])
+			i += 2
+		case strings.HasPrefix(arg, "--config="):
+			globals = append(globals, arg)
+			i++
+		case arg == "--no-color" || arg == "--offline":
+			globals = append(globals, arg)
+			i++
+		case strings.HasPrefix(arg, "--offline="):
+			globals = append(globals, arg)
+			i++
+		default:
+			out := []string{arg}
+			if len(globals) > 0 {
+				out = append(out, globals...)
+			}
+			out = append(out, args[i+1:]...)
+			return out
+		}
+	}
+	return append([]string(nil), args...)
 }
 
 // runCLIDispatch routes argv to the new ccusage-aligned cli subcommands

@@ -39,7 +39,7 @@ func TestLoadRejectsDamagedJSON(t *testing.T) {
 }
 
 func TestResolveFallsBackToBaseName(t *testing.T) {
-	aliases := projectalias.Aliases{"agmon": {"/repo/agmon"}}
+	aliases := projectalias.Aliases{{Project: "agmon", CWDs: []string{"/repo/agmon"}}}
 	if got := aliases.Resolve("/repo/other"); got != "other" {
 		t.Fatalf("Resolve fallback=%q want other", got)
 	}
@@ -47,10 +47,22 @@ func TestResolveFallsBackToBaseName(t *testing.T) {
 
 func TestResolveFirstProjectWins(t *testing.T) {
 	aliases := projectalias.Aliases{
-		"first":  {"/repo/shared"},
-		"second": {"/repo/shared"},
+		{Project: "first", CWDs: []string{"/repo/shared"}},
+		{Project: "second", CWDs: []string{"/repo/shared"}},
 	}
 	if got := aliases.Resolve("/repo/shared"); got != "first" {
 		t.Fatalf("Resolve=%q want first", got)
+	}
+}
+
+func TestResolveFirstWinsAcrossMultipleProjects(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		aliases, err := projectalias.Load(`{"first":["/repo/shared"],"second":["/repo/shared"]}`)
+		if err != nil {
+			t.Fatalf("Load iteration %d: %v", i, err)
+		}
+		if got := aliases.Resolve("/repo/shared"); got != "first" {
+			t.Fatalf("iteration %d Resolve=%q want first", i, got)
+		}
 	}
 }
