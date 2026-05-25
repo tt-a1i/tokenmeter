@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/jedib0t/go-pretty/v6/text"
 )
 
 func TestRenderBlocksTokenLimitZeroKeepsOldColumns(t *testing.T) {
@@ -33,6 +35,9 @@ func TestRenderBlocksTokenLimitShowsUsageStatusAndProgress(t *testing.T) {
 }
 
 func TestRenderBlocksTokenLimitColorsStatuses(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("FORCE_COLOR", "1")
+	text.EnableColors()
 	var buf bytes.Buffer
 	rows := []BlockRow{
 		tokenLimitBlockRow(50, 100, "OK"),
