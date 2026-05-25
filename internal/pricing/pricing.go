@@ -49,25 +49,32 @@ func (m *Map) LoadJSON(data []byte) error {
 	if m.entries == nil {
 		m.entries = map[string]Pricing{}
 	}
-	var raw map[string]liteLLMEntry
+	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	for model, r := range raw {
+	for model, entry := range raw {
+		if model == "sample_spec" {
+			continue
+		}
+		var r liteLLMEntry
+		if err := json.Unmarshal(entry, &r); err != nil {
+			return err
+		}
 		p := Pricing{
 			Input:                ptrOrZero(r.InputCostPerToken),
 			Output:               ptrOrZero(r.OutputCostPerToken),
 			CacheCreate:          ptrOrZero(r.CacheCreationInputTokenCost),
 			CacheRead:            ptrOrZero(r.CacheReadInputTokenCost),
-			InputAbove200K:       r.InputCostPerTokenAbove200K,
-			OutputAbove200K:      r.OutputCostPerTokenAbove200K,
-			CacheCreateAbove200K: r.CacheCreationInputTokenCostAbove200K,
-			CacheReadAbove200K:   r.CacheReadInputTokenCostAbove200K,
+			InputAbove200K:       ptrOrFloat(r.InputCostPerTokenAbove200K),
+			OutputAbove200K:      ptrOrFloat(r.OutputCostPerTokenAbove200K),
+			CacheCreateAbove200K: ptrOrFloat(r.CacheCreationInputTokenCostAbove200K),
+			CacheReadAbove200K:   ptrOrFloat(r.CacheReadInputTokenCostAbove200K),
 			MaxInputTokens:       ptrOrZeroInt(r.MaxInputTokens),
 			FastMultiplier:       1.0,
 		}
 		if r.ProviderSpecificEntry != nil && r.ProviderSpecificEntry.Fast != nil {
-			p.FastMultiplier = *r.ProviderSpecificEntry.Fast
+			p.FastMultiplier = float64(*r.ProviderSpecificEntry.Fast)
 		} else if override := fastMultiplierOverride(model); override != 0 {
 			p.FastMultiplier = override
 		}
@@ -149,20 +156,22 @@ func joinFrom(parts []string, from int, sep byte) string {
 }
 
 type liteLLMEntry struct {
-	InputCostPerToken                    *float64               `json:"input_cost_per_token"`
-	OutputCostPerToken                   *float64               `json:"output_cost_per_token"`
-	CacheCreationInputTokenCost          *float64               `json:"cache_creation_input_token_cost"`
-	CacheReadInputTokenCost              *float64               `json:"cache_read_input_token_cost"`
-	InputCostPerTokenAbove200K           *float64               `json:"input_cost_per_token_above_200k_tokens"`
-	OutputCostPerTokenAbove200K          *float64               `json:"output_cost_per_token_above_200k_tokens"`
-	CacheCreationInputTokenCostAbove200K *float64               `json:"cache_creation_input_token_cost_above_200k_tokens"`
-	CacheReadInputTokenCostAbove200K     *float64               `json:"cache_read_input_token_cost_above_200k_tokens"`
-	MaxInputTokens                       *int64                 `json:"max_input_tokens"`
+	InputCostPerToken                    *stringOrFloat         `json:"input_cost_per_token"`
+	OutputCostPerToken                   *stringOrFloat         `json:"output_cost_per_token"`
+	CacheCreationInputTokenCost          *stringOrFloat         `json:"cache_creation_input_token_cost"`
+	CacheReadInputTokenCost              *stringOrFloat         `json:"cache_read_input_token_cost"`
+	InputCostPerTokenAbove200K           *stringOrFloat         `json:"input_cost_per_token_above_200k_tokens"`
+	OutputCostPerTokenAbove200K          *stringOrFloat         `json:"output_cost_per_token_above_200k_tokens"`
+	CacheCreationInputTokenCostAbove200K *stringOrFloat         `json:"cache_creation_input_token_cost_above_200k_tokens"`
+	CacheReadInputTokenCostAbove200K     *stringOrFloat         `json:"cache_read_input_token_cost_above_200k_tokens"`
+	MaxInputTokens                       *stringOrInt           `json:"max_input_tokens"`
+	MaxOutputTokens                      *stringOrInt           `json:"max_output_tokens"`
+	MaxTokens                            *stringOrInt           `json:"max_tokens"`
 	ProviderSpecificEntry                *providerSpecificEntry `json:"provider_specific_entry"`
 }
 
 type providerSpecificEntry struct {
-	Fast *float64 `json:"fast"`
+	Fast *stringOrFloat `json:"fast"`
 }
 
 func fastMultiplierOverride(model string) float64 {
@@ -189,16 +198,24 @@ func fastMultiplierOverride(model string) float64 {
 	return 0
 }
 
-func ptrOrZero(p *float64) float64 {
+func ptrOrZero(p *stringOrFloat) float64 {
 	if p == nil {
 		return 0
 	}
-	return *p
+	return float64(*p)
 }
 
-func ptrOrZeroInt(p *int64) int64 {
+func ptrOrFloat(p *stringOrFloat) *float64 {
+	if p == nil {
+		return nil
+	}
+	v := float64(*p)
+	return &v
+}
+
+func ptrOrZeroInt(p *stringOrInt) int64 {
 	if p == nil {
 		return 0
 	}
-	return *p
+	return int64(*p)
 }

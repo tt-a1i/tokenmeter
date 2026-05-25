@@ -161,6 +161,45 @@ func TestLoadRuntimeUsesConfigPricingOptions(t *testing.T) {
 	}
 }
 
+func TestLiteLLMParseRealSnapshot(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "litellm", "sample.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &Map{}
+	if err := m.LoadJSON(data); err != nil {
+		t.Fatalf("LoadJSON: %v", err)
+	}
+	if _, ok := m.Lookup("sample_spec"); ok {
+		t.Fatal("sample_spec documentation entry should not be loaded as pricing")
+	}
+
+	stringModel, ok := m.Resolve("openai/gpt-5-string-schema")
+	if !ok {
+		t.Fatal("string schema model was not loaded")
+	}
+	if stringModel.Input != 0.00000125 || stringModel.Output != 0.00001 {
+		t.Fatalf("string model costs = input %g output %g", stringModel.Input, stringModel.Output)
+	}
+	if stringModel.MaxInputTokens != 1048576 {
+		t.Fatalf("string model max input tokens = %d", stringModel.MaxInputTokens)
+	}
+	if stringModel.FastMultiplier != 2.5 {
+		t.Fatalf("string model fast multiplier = %g", stringModel.FastMultiplier)
+	}
+	if stringModel.InputAbove200K == nil || *stringModel.InputAbove200K != 0.0000025 {
+		t.Fatalf("string model above-200k input cost = %v", stringModel.InputAbove200K)
+	}
+
+	numberModel, ok := m.Resolve("openai/gpt-5-number-schema")
+	if !ok {
+		t.Fatal("number schema model was not loaded")
+	}
+	if numberModel.Input != 0.000003 || numberModel.MaxInputTokens != 128000 || numberModel.FastMultiplier != 2 {
+		t.Fatalf("number model pricing = %+v", numberModel)
+	}
+}
+
 func writeRuntimeCacheFile(t *testing.T, fetchedAt time.Time, raw string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "pricing-cache.json")
