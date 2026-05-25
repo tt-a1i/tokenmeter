@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/tt-a1i/tokenmeter/cmd/tm/cli"
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
 	"github.com/tt-a1i/tokenmeter/internal/collector"
@@ -414,6 +415,9 @@ func TestE2EV12SmokePricingOfflineHelperProcess(t *testing.T) {
 func TestE2EV12SmokeBlocksHelperProcess(t *testing.T) {
 	if os.Getenv("TM_E2E_HELPER") != "blocks" {
 		return
+	}
+	if os.Getenv("FORCE_COLOR") != "" {
+		text.EnableColors()
 	}
 	os.Args = []string{"tm", "blocks", "--token-limit", "100"}
 	main()

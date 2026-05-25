@@ -312,9 +312,12 @@ func TestRunAnalyzeToolErrorsExplicitProjectAndAliases(t *testing.T) {
 	if err := db.UpdateToolCallEnd("other-tool-fail", "String to replace not found", event.StatusFail, 50, now.Add(time.Second)); err != nil {
 		t.Fatalf("insert other fail end: %v", err)
 	}
-	aliases := `{"agmon":["` + aliasCWD + `"]}`
+	aliasJSON, err := json.Marshal(map[string][]string{"agmon": {aliasCWD}})
+	if err != nil {
+		t.Fatalf("marshal aliases: %v", err)
+	}
 
-	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--project", "agmon", "--project-aliases", aliases, "--json"})
+	withArgs(t, []string{"tokenmeter", "analyze", "--range", "all", "--tool-errors", "--project", "agmon", "--project-aliases", string(aliasJSON), "--json"})
 	out := captureStdout(t, func() {
 		if err := runAnalyze(); err != nil {
 			t.Fatalf("runAnalyze: %v", err)
