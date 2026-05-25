@@ -75,6 +75,7 @@ type Options struct {
 	Color     bool
 	Breakdown bool
 	JSON      bool
+	Compact   bool
 }
 
 // Renderer is the entrypoint used by cli/* handlers.

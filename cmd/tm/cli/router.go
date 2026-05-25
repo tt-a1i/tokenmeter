@@ -101,6 +101,11 @@ func Route(argv []string) (Command, error) {
 		}
 	case "statusline":
 		// Args parsed inline; main wires stdin/stdout.
+	case "pricing":
+		if len(rest) == 0 || rest[0] != "refresh" {
+			return Command{Name: "help"}, fmt.Errorf("unknown pricing command")
+		}
+		cmd.Name = "pricing:refresh"
 	case "help", "":
 		cmd.Name = "help"
 	default:

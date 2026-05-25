@@ -15,18 +15,27 @@ import (
 
 // Input is the JSON payload Claude Code writes to stdin.
 type Input struct {
-	ModelID        string `json:"model_id"`
-	SessionID      string `json:"session_id"`
-	CWD            string `json:"cwd"`
-	TranscriptPath string `json:"transcript_path"`
+	ModelID        string         `json:"model_id"`
+	SessionID      string         `json:"session_id"`
+	CWD            string         `json:"cwd"`
+	TranscriptPath string         `json:"transcript_path"`
+	ContextWindow  *ContextWindow `json:"context_window,omitempty"`
+}
+
+type ContextWindow struct {
+	TotalInputTokens  int64 `json:"total_input_tokens"`
+	ContextWindowSize int64 `json:"context_window_size"`
 }
 
 // Config controls quota + format. When QuotaUSD is 0, coloring is disabled
 // (D11: default behavior — no color, just numbers).
 type Config struct {
-	QuotaUSD float64 `json:"quota_usd"`
-	Format   string  `json:"format"` // "compact" (default) | "detailed"
-	Color    bool    `json:"color"`
+	QuotaUSD               float64 `json:"quota_usd"`
+	Format                 string  `json:"format"` // "compact" (default) | "detailed"
+	Color                  bool    `json:"color"`
+	ContextLowThreshold    int     `json:"context_low_threshold"`
+	ContextMediumThreshold int     `json:"context_medium_threshold"`
+	BurnRateDisplay        string  `json:"burn_rate_display"`
 }
 
 // LoadConfig reads the statusline config from path. If the file does not
@@ -36,12 +45,16 @@ func LoadConfig(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Config{}, nil
+			return defaultConfig(), nil
 		}
 		return Config{}, err
 	}
-	var c Config
+	c := defaultConfig()
 	if err := json.Unmarshal(data, &c); err != nil {
+		return Config{}, err
+	}
+	c = normalizeConfig(c)
+	if err := ValidateConfig(c); err != nil {
 		return Config{}, err
 	}
 	return c, nil
@@ -61,6 +74,7 @@ func ParseInput(r io.Reader) (Input, error) {
 // Render writes a single-line statusline to w. `block` may be nil (e.g. no
 // activity yet). `now` controls remaining-time math.
 func Render(w io.Writer, in Input, block *blocks.SessionBlock, cfg Config, now time.Time) error {
+	cfg = normalizeConfig(cfg)
 	var parts []string
 	parts = append(parts, modelEmoji(in.ModelID)+" "+shortModel(in.ModelID))
 	if block != nil && block.IsActive {
@@ -81,12 +95,105 @@ func Render(w io.Writer, in Input, block *blocks.SessionBlock, cfg Config, now t
 	} else {
 		parts = append(parts, "no active block")
 	}
+	if in.ContextWindow != nil && in.ContextWindow.ContextWindowSize > 0 {
+		percent := int(float64(in.ContextWindow.TotalInputTokens) * 100 / float64(in.ContextWindow.ContextWindowSize))
+		parts = append(parts, colorContextPercent(percent, cfg))
+	}
+	if block != nil && block.BurnRate != nil {
+		if label := burnRateLabel(block.BurnRate, cfg.BurnRateDisplay); label != "" {
+			parts = append(parts, label)
+		}
+	}
 	line := strings.Join(parts, " ▎ ")
 	if cfg.Color && cfg.QuotaUSD > 0 && block != nil && block.Projection != nil {
 		line = colorize(line, block.Projection.TotalCost, cfg.QuotaUSD)
 	}
 	_, err := fmt.Fprintln(w, line)
 	return err
+}
+
+func defaultConfig() Config {
+	return Config{
+		ContextLowThreshold:    50,
+		ContextMediumThreshold: 80,
+		BurnRateDisplay:        "emoji",
+	}
+}
+
+func normalizeConfig(c Config) Config {
+	if c.ContextLowThreshold == 0 {
+		c.ContextLowThreshold = 50
+	}
+	if c.ContextMediumThreshold == 0 {
+		c.ContextMediumThreshold = 80
+	}
+	if c.BurnRateDisplay == "" {
+		c.BurnRateDisplay = "emoji"
+	}
+	return c
+}
+
+func ValidateConfig(c Config) error {
+	if c.ContextLowThreshold >= c.ContextMediumThreshold {
+		return fmt.Errorf("context_low_threshold must be less than context_medium_threshold")
+	}
+	if !validBurnRateDisplay(c.BurnRateDisplay) {
+		return fmt.Errorf("invalid burn_rate_display %q (want off, emoji, text, or emoji-text)", c.BurnRateDisplay)
+	}
+	return nil
+}
+
+func colorContextPercent(percent int, cfg Config) string {
+	text := fmt.Sprintf("%d%%", percent)
+	if !cfg.Color {
+		return text
+	}
+	switch {
+	case percent >= cfg.ContextMediumThreshold:
+		return "\x1b[31m" + text + "\x1b[0m"
+	case percent >= cfg.ContextLowThreshold:
+		return "\x1b[33m" + text + "\x1b[0m"
+	default:
+		return "\x1b[32m" + text + "\x1b[0m"
+	}
+}
+
+func burnRateLabel(rate *blocks.BurnRate, mode string) string {
+	if mode == "" {
+		mode = "emoji"
+	}
+	if mode == "off" {
+		return ""
+	}
+	emoji, level := burnRateStatus(rate.TokensPerMinute)
+	switch mode {
+	case "text":
+		return level
+	case "emoji-text":
+		return emoji + " " + level
+	default:
+		return emoji
+	}
+}
+
+func burnRateStatus(tokensPerMinute float64) (string, string) {
+	switch {
+	case tokensPerMinute < 2_000:
+		return "📉", "Low"
+	case tokensPerMinute < 5_000:
+		return "📈", "Steady"
+	default:
+		return "🔥", "High"
+	}
+}
+
+func validBurnRateDisplay(mode string) bool {
+	switch mode {
+	case "off", "emoji", "text", "emoji-text":
+		return true
+	default:
+		return false
+	}
 }
 
 // remainingTime prefers the burn-rate annotated projection so the renderer

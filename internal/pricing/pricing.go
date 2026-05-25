@@ -68,6 +68,8 @@ func (m *Map) LoadJSON(data []byte) error {
 		}
 		if r.ProviderSpecificEntry != nil && r.ProviderSpecificEntry.Fast != nil {
 			p.FastMultiplier = *r.ProviderSpecificEntry.Fast
+		} else if override := fastMultiplierOverride(model); override != 0 {
+			p.FastMultiplier = override
 		}
 		m.entries[model] = p
 	}
@@ -161,6 +163,30 @@ type liteLLMEntry struct {
 
 type providerSpecificEntry struct {
 	Fast *float64 `json:"fast"`
+}
+
+func fastMultiplierOverride(model string) float64 {
+	switch model {
+	case "gpt-5.5":
+		return 2.5
+	case "gpt-5.4", "gpt-5.3-codex":
+		return 2.0
+	}
+	normalized := model
+	if i := lastIndex(normalized, "/"); i >= 0 {
+		normalized = normalized[i+1:]
+	}
+	for _, prefix := range []string{"us.", "eu.", "global.", "jp.", "au."} {
+		if len(normalized) > len(prefix) && normalized[:len(prefix)] == prefix {
+			normalized = normalized[len(prefix):]
+			break
+		}
+	}
+	if normalized == "anthropic.claude-opus-4-6" || normalized == "anthropic.claude-opus-4-7" ||
+		normalized == "claude-opus-4-6" || normalized == "claude-opus-4-7" {
+		return 6.0
+	}
+	return 0
 }
 
 func ptrOrZero(p *float64) float64 {

@@ -26,8 +26,11 @@ type StatuslineReader interface {
 //     post-load recompute hook used when the source rows lacked a cost
 //     (e.g. Codex) or the user wants the calculated value to override.
 type StatuslineOptions struct {
-	NoColor bool
-	Mode    string
+	NoColor                bool
+	Mode                   string
+	ContextLowThreshold    int
+	ContextMediumThreshold int
+	BurnRateDisplay        string
 }
 
 type statuslineOpt func(*StatuslineOptions)
@@ -54,6 +57,18 @@ func RunStatusline(ctx context.Context, in io.Reader, out io.Writer, reader Stat
 	}
 	if o.NoColor {
 		cfg.Color = false
+	}
+	if o.ContextLowThreshold > 0 {
+		cfg.ContextLowThreshold = o.ContextLowThreshold
+	}
+	if o.ContextMediumThreshold > 0 {
+		cfg.ContextMediumThreshold = o.ContextMediumThreshold
+	}
+	if o.BurnRateDisplay != "" {
+		cfg.BurnRateDisplay = o.BurnRateDisplay
+	}
+	if err := statusline.ValidateConfig(cfg); err != nil {
+		return err
 	}
 	if o.Mode != "" {
 		reader = &modeAwareReader{inner: reader, mode: pricing.ParseMode(o.Mode)}
@@ -99,7 +114,7 @@ func (m *modeAwareReader) LoadActive(ctx context.Context) (*blocks.SessionBlock,
 		Output:      b.Tokens.Output,
 		CacheCreate: b.Tokens.CacheCreate,
 		CacheRead:   b.Tokens.CacheRead,
-	}, pricing.SpeedStandard)
+	}, speedForModel(b.Models[0]))
 	return b, nil
 }
 

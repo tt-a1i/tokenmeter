@@ -929,16 +929,27 @@ func parseTimestamp(s string) (time.Time, bool) {
 // CodexPricing returns per-million-token pricing for a Codex model.
 // cacheReadPricePerM falls back to inputPricePerM when the model has no cache discount.
 func CodexPricing(model string) (inputPricePerM, outputPricePerM, cacheReadPricePerM float64) {
+	return CodexPricingForSpeed(model, CodexSpeedStandard)
+}
+
+func CodexPricingForSpeed(model string, speed CodexSpeed) (inputPricePerM, outputPricePerM, cacheReadPricePerM float64) {
 	pricing := codexPricing(model)
 	cacheP := pricing.cacheReadPerMill
 	if cacheP == 0 {
 		cacheP = pricing.inputPerMillion
 	}
-	return pricing.inputPerMillion, pricing.outputPerMillion, cacheP
+	multiplier := 1.0
+	if speed == CodexSpeedFast {
+		multiplier = pricing.fastMultiplier
+		if multiplier == 0 {
+			multiplier = 2.0
+		}
+	}
+	return pricing.inputPerMillion * multiplier, pricing.outputPerMillion * multiplier, cacheP * multiplier
 }
 
 func estimateCodexCost(inputTokens, outputTokens, cachedInputTokens int, model string) float64 {
-	inP, outP, cacheP := CodexPricing(model)
+	inP, outP, cacheP := CodexPricingForSpeed(model, ResolveCodexPricingSpeed())
 	regularInput := inputTokens - cachedInputTokens
 	if regularInput < 0 {
 		regularInput = 0

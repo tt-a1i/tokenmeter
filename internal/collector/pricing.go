@@ -21,7 +21,9 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/tt-a1i/tokenmeter/internal/appdir"
 )
@@ -32,6 +34,7 @@ type modelPricing struct {
 	outputPerMillion   float64
 	cacheCreatePerMill float64
 	cacheReadPerMill   float64
+	fastMultiplier     float64
 }
 
 var defaultClaudePricingTable = []modelPricing{
@@ -77,15 +80,15 @@ var defaultCodexPricingTable = []modelPricing{
 	{match: []string{"gpt-5-pro"}, inputPerMillion: 15.0, outputPerMillion: 120.0},
 
 	// --- GPT-5.5 family ---
-	{match: []string{"gpt-5.5"}, inputPerMillion: 5.0, outputPerMillion: 30.0, cacheReadPerMill: 0.50},
+	{match: []string{"gpt-5.5"}, inputPerMillion: 5.0, outputPerMillion: 30.0, cacheReadPerMill: 0.50, fastMultiplier: 2.5},
 
 	// --- GPT-5.4 family ---
 	{match: []string{"gpt-5.4", "nano"}, inputPerMillion: 0.20, outputPerMillion: 1.25, cacheReadPerMill: 0.02},
 	{match: []string{"gpt-5.4", "mini"}, inputPerMillion: 0.75, outputPerMillion: 4.50, cacheReadPerMill: 0.075},
-	{match: []string{"gpt-5.4"}, inputPerMillion: 2.50, outputPerMillion: 15.0, cacheReadPerMill: 0.25},
+	{match: []string{"gpt-5.4"}, inputPerMillion: 2.50, outputPerMillion: 15.0, cacheReadPerMill: 0.25, fastMultiplier: 2.0},
 
 	// --- GPT-5.3 family (chat and codex share the 5.2 price tier). ---
-	{match: []string{"gpt-5.3", "codex"}, inputPerMillion: 1.75, outputPerMillion: 14.0, cacheReadPerMill: 0.175},
+	{match: []string{"gpt-5.3", "codex"}, inputPerMillion: 1.75, outputPerMillion: 14.0, cacheReadPerMill: 0.175, fastMultiplier: 2.0},
 	{match: []string{"gpt-5.3"}, inputPerMillion: 1.75, outputPerMillion: 14.0, cacheReadPerMill: 0.175},
 
 	// --- GPT-5.2 family ---
@@ -127,7 +130,18 @@ type pricingOverrideRule struct {
 	OutputPerMillion   float64  `json:"outputPerMillion"`
 	CacheCreatePerMill float64  `json:"cacheCreatePerMill"`
 	CacheReadPerMill   float64  `json:"cacheReadPerMill"`
+	FastMultiplier     float64  `json:"fastMultiplier"`
 }
+
+type CodexSpeed string
+
+const (
+	CodexSpeedStandard CodexSpeed = "standard"
+	CodexSpeedFast     CodexSpeed = "fast"
+)
+
+var codexSpeedMode = "auto"
+var codexSpeedMu sync.RWMutex
 
 func init() {
 	LoadPricingOverrides()
@@ -185,7 +199,7 @@ func (r pricingOverrideRule) modelPricing(platform, path string, index int) (mod
 		log.Printf("pricing override: skip %s[%d] in %s: match is required", platform, index, path)
 		return modelPricing{}, false
 	}
-	if r.InputPerMillion < 0 || r.OutputPerMillion < 0 || r.CacheCreatePerMill < 0 || r.CacheReadPerMill < 0 {
+	if r.InputPerMillion < 0 || r.OutputPerMillion < 0 || r.CacheCreatePerMill < 0 || r.CacheReadPerMill < 0 || r.FastMultiplier < 0 {
 		log.Printf("pricing override: skip %s[%d] in %s: rates must be non-negative", platform, index, path)
 		return modelPricing{}, false
 	}
@@ -195,6 +209,7 @@ func (r pricingOverrideRule) modelPricing(platform, path string, index int) (mod
 		outputPerMillion:   r.OutputPerMillion,
 		cacheCreatePerMill: r.CacheCreatePerMill,
 		cacheReadPerMill:   r.CacheReadPerMill,
+		fastMultiplier:     r.FastMultiplier,
 	}, true
 }
 
@@ -234,5 +249,102 @@ func codexPricing(model string) modelPricing {
 	return matchPricing(model, modelPricing{
 		inputPerMillion:  2.0,
 		outputPerMillion: 8.0,
+		fastMultiplier:   2.0,
 	}, codexPricingTable)
+}
+
+func SetCodexSpeedMode(mode string) error {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "auto"
+	}
+	switch mode {
+	case "auto", "standard", "fast":
+		codexSpeedMu.Lock()
+		codexSpeedMode = mode
+		codexSpeedMu.Unlock()
+		return nil
+	default:
+		return os.ErrInvalid
+	}
+}
+
+func ResolveCodexPricingSpeed() CodexSpeed {
+	codexSpeedMu.RLock()
+	mode := codexSpeedMode
+	codexSpeedMu.RUnlock()
+	switch mode {
+	case "fast":
+		return CodexSpeedFast
+	case "standard":
+		return CodexSpeedStandard
+	default:
+		if codexConfigRequestsFastServiceTier() {
+			return CodexSpeedFast
+		}
+		return CodexSpeedStandard
+	}
+}
+
+func codexConfigRequestsFastServiceTier() bool {
+	path := filepath.Join(codexConfigDir(), "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	tier, ok := parseCodexServiceTier(string(data))
+	if !ok {
+		return false
+	}
+	tier = strings.ToLower(tier)
+	return strings.Contains(tier, "fast") || strings.Contains(tier, "priority")
+}
+
+func codexConfigDir() string {
+	if dir := strings.TrimSpace(os.Getenv("CODEX_HOME")); dir != "" {
+		return dir
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".codex")
+}
+
+func parseCodexServiceTier(content string) (string, bool) {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(stripTOMLComment(line))
+		if !strings.HasPrefix(line, "service_tier") {
+			continue
+		}
+		keyValue := strings.SplitN(line, "=", 2)
+		if len(keyValue) != 2 || strings.TrimSpace(keyValue[0]) != "service_tier" {
+			continue
+		}
+		value := strings.TrimSpace(keyValue[1])
+		value = strings.Trim(value, `"'`)
+		if value != "" {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func stripTOMLComment(line string) string {
+	inSingle := false
+	inDouble := false
+	for i, r := range line {
+		switch r {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		case '#':
+			if !inSingle && !inDouble {
+				return line[:i]
+			}
+		}
+	}
+	return line
 }

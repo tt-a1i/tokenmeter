@@ -47,3 +47,23 @@ func TestParseSharedSessionLength(t *testing.T) {
 		t.Fatalf("SessionLength=%v want 1h30m", got.SessionLength)
 	}
 }
+
+func TestParseSharedSpeedFlag(t *testing.T) {
+	got, rest, err := cli.ParseShared([]string{"--speed", "fast", "daily"})
+	if err != nil {
+		t.Fatalf("ParseShared: %v", err)
+	}
+	if got.Speed != "fast" {
+		t.Fatalf("Speed=%q want fast", got.Speed)
+	}
+	if len(rest) != 1 || rest[0] != "daily" {
+		t.Fatalf("rest=%v want [daily]", rest)
+	}
+}
+
+func TestParseSharedRejectsInvalidSpeedFlag(t *testing.T) {
+	_, _, err := cli.ParseShared([]string{"--speed", "turbo"})
+	if err == nil {
+		t.Fatal("expected invalid --speed to fail")
+	}
+}

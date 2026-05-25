@@ -25,6 +25,7 @@ func renderOpts(s Shared, w io.Writer) render.Options {
 		JSON:      s.JSON,
 		Breakdown: s.Breakdown,
 		Color:     render.Resolve(s.JSON, s.NoColor, w),
+		Compact:   s.Compact,
 	}
 }
 

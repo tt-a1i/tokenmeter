@@ -279,7 +279,7 @@ func recalculateCost(r storage.AggregateUsageRow) float64 {
 		Output:      r.OutputTokens,
 		CacheCreate: r.CacheCreateTokens,
 		CacheRead:   r.CacheReadTokens,
-	}, pricing.SpeedStandard)
+	}, speedForModel(model))
 }
 
 // parseDateFlag accepts a YYYYMMDD shared-flag value and returns a UTC
@@ -544,7 +544,7 @@ func applyPricingMode(entries []storage.TokenUsageEntry, mode pricing.Mode) []st
 			Output:      e.OutputTokens,
 			CacheCreate: e.CacheCreationInputTokens,
 			CacheRead:   e.CacheReadInputTokens,
-		}, pricing.SpeedStandard)
+		}, speedForModel(e.Model))
 	}
 	return out
 }

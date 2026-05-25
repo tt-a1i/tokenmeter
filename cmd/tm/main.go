@@ -204,10 +204,13 @@ func main() {
 		}
 	case "help", "-h", "--help":
 		printHelp()
-	case "daily", "weekly", "monthly", "session", "blocks", "statusline",
+	case "daily", "weekly", "monthly", "session", "blocks", "statusline", "pricing",
 		"cost", "report", "status", "top",
 		"amp", "codebuff", "copilot", "droid", "gemini", "goose", "hermes",
 		"kilo", "kimi", "openclaw", "opencode", "pi", "qwen":
+		if maybePrintCmdHelp(os.Args[1], os.Args[2:]) {
+			return
+		}
 		if err := runCLIDispatch(os.Args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -240,6 +243,15 @@ func runCLIDispatch(argv []string) error {
 		defer pprof.StopCPUProfile()
 	}
 	ctx := context.Background()
+	if err := cli.SetCodexSpeedMode(cmd.Shared.Speed); err != nil {
+		return err
+	}
+	if cmd.Name == "pricing:refresh" {
+		return cli.RunPricingRefresh(ctx, os.Stdout, cmd.Shared.Offline)
+	}
+	if err := cli.ConfigureRuntimePricing(ctx, cmd.Shared.Offline); err != nil {
+		return err
+	}
 	db := mustOpenDB()
 	defer db.Close()
 	now := time.Now()
@@ -258,8 +270,11 @@ func runCLIDispatch(argv []string) error {
 		cfgPath := appdir.Path("statusline.json")
 		return cli.RunStatusline(ctx, os.Stdin, os.Stdout, adapter, cfgPath, now,
 			cli.WithStatuslineOptions(cli.StatuslineOptions{
-				NoColor: cmd.Shared.NoColor,
-				Mode:    cmd.Shared.Mode,
+				NoColor:                cmd.Shared.NoColor,
+				Mode:                   cmd.Shared.Mode,
+				ContextLowThreshold:    cmd.Shared.ContextLowThreshold,
+				ContextMediumThreshold: cmd.Shared.ContextMediumThreshold,
+				BurnRateDisplay:        cmd.Shared.BurnRateDisplay,
 			}))
 	case "deprecated:daily", "deprecated:session", "deprecated:blocks-active":
 		return cli.RunDeprecatedAlias(ctx, os.Stdout, os.Stderr, cmd.Alias, cmd.Rest, db)
@@ -912,6 +927,7 @@ var helpSections = []helpSection{
 	}},
 	{"Configuration", []helpCommand{
 		{"tag <id> [text]", "Set/clear session note"},
+		{"pricing refresh", "Refresh LiteLLM pricing cache"},
 		{"budget <subcommand>", "Manage budgets: list, set, delete, usage"},
 		{"webhook <subcommand>", "Manage webhooks: list, test, replay"},
 	}},
