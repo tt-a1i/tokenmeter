@@ -95,10 +95,6 @@ func (s *DB) TopChurnFilesScoped(from, to time.Time, limit int, scope ProjectSco
 	return out, nil
 }
 
-func (s *DB) fileModeCounts(filePath string, from, to time.Time) (map[string]int64, error) {
-	return s.fileModeCountsScoped(filePath, from, to, ProjectScope{All: true})
-}
-
 func (s *DB) fileModeCountsScoped(filePath string, from, to time.Time, scope ProjectScope) (map[string]int64, error) {
 	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
 	if err != nil {

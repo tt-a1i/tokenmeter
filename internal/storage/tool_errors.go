@@ -118,10 +118,6 @@ func (s *DB) TopFailingToolsScoped(from, to time.Time, limit int, scope ProjectS
 	return out, nil
 }
 
-func (s *DB) topPatternForTool(tool string, from, to time.Time) (string, error) {
-	return s.topPatternForToolScoped(tool, from, to, ProjectScope{All: true})
-}
-
 func (s *DB) topPatternForToolScoped(tool string, from, to time.Time, scope ProjectScope) (string, error) {
 	scopeClause, scopeArgs, err := s.projectScopeClause("session_id", scope)
 	if err != nil {

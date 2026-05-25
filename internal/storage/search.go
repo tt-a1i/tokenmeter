@@ -2,7 +2,6 @@ package storage
 
 import (
 	"strings"
-	"time"
 )
 
 func (s *DB) SearchAdvanced(q Query, limit int) ([]SearchHit, error) {
@@ -145,11 +144,4 @@ func searchAdvancedWhere(sessionExpr, sessionAlias, tsExpr, bodyExpr string, q Q
 		args = append(args, formatQueryTime(q.Until.AddDate(0, 0, 1)))
 	}
 	return strings.Join(where, " AND "), args
-}
-
-func searchDateForReport(t *time.Time) string {
-	if t == nil {
-		return ""
-	}
-	return t.Format("2006-01-02")
 }
