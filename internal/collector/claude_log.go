@@ -317,6 +317,13 @@ func (d *claudeTokenDeduper) append(events []event.Event, entry claudeLogEntry, 
 		cost:      ev.Data.CostUSD,
 	}
 	if idx, ok := d.byUUID[entry.UUID]; ok {
+		if !candidate.sidechain && !d.rows[idx].sidechain {
+			if claudeTokenDedupePrefers(candidate, d.rows[idx]) {
+				d.byUUID[entry.UUID] = len(events)
+			}
+			d.rows = append(d.rows, candidate)
+			return append(events, ev)
+		}
 		if claudeTokenDedupePrefers(candidate, d.rows[idx]) {
 			events[idx] = ev
 			d.rows[idx] = candidate
@@ -368,6 +375,8 @@ func parseClaudeLogTokenEvent(entry claudeLogEntry, sessionID, gitBranch string)
 	sourceID := fmt.Sprintf("claude-tokens-%s-%s", sessionID, entry.UUID)
 	if entry.IsSidechain {
 		sourceID = fmt.Sprintf("claude-tokens-sidechain-%s-%s-%s", sessionID, entry.UUID, entry.RequestID)
+	} else if entry.RequestID != "" {
+		sourceID = fmt.Sprintf("claude-tokens-%s-%s-%s", sessionID, entry.UUID, entry.RequestID)
 	}
 	return event.Event{
 		ID:        sourceID,

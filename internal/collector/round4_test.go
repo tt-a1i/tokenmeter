@@ -245,11 +245,29 @@ func TestParseClaudeFileEventsDedupesSidechainReplay(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("got %d events, want 1: %#v", len(got), got)
 	}
-	if got[0].ID != "claude-tokens-s-msg-1" {
+	if got[0].ID != "claude-tokens-s-msg-1-main-req" {
 		t.Fatalf("kept event ID = %q, want non-sidechain ID", got[0].ID)
 	}
 	if got[0].Data.InputTokens != 100 || got[0].Data.OutputTokens != 50 {
 		t.Fatalf("kept tokens = input %d output %d, want 100/50", got[0].Data.InputTokens, got[0].Data.OutputTokens)
+	}
+}
+
+func TestParseClaudeFileEventsKeepsSameUUIDNonSidechainRequests(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	body := `{"type":"assistant","sessionId":"s","uuid":"msg-main","requestId":"main-req-1","isSidechain":false,"timestamp":"2026-01-14T12:07:10Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}}` + "\n" +
+		`{"type":"assistant","sessionId":"s","uuid":"msg-main","requestId":"main-req-2","isSidechain":false,"timestamp":"2026-01-14T12:07:11Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":30,"output_tokens":9}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got := ParseClaudeFileEvents(path, "s")
+	if len(got) != 2 {
+		t.Fatalf("got %d events, want 2: %#v", len(got), got)
+	}
+	if got[0].ID == got[1].ID {
+		t.Fatalf("non-sidechain requests should have distinct source IDs, both got %q", got[0].ID)
 	}
 }
 
