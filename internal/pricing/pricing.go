@@ -40,7 +40,35 @@ func LoadEmbedded() *Map {
 	if err := m.LoadJSON(embeddedSnapshot); err != nil {
 		panic("pricing: embedded snapshot invalid: " + err.Error())
 	}
+	seedBuiltinPrices(m)
 	return m
+}
+
+// seedBuiltinPrices fills in prices the LiteLLM snapshot does not carry
+// (the refresh-pricing script filters by provider prefix, and moonshot/
+// is not in that allow-list). Mirrors ccusage's built-in Moonshot table
+// in rust/crates/ccusage/src/pricing.rs:430-461. Existing entries from
+// the embedded snapshot or a runtime LoadJSON merge are preserved so
+// LiteLLM data (when available) wins over the hard-coded fallback.
+func seedBuiltinPrices(m *Map) {
+	if _, ok := m.entries["moonshot/kimi-k2.5"]; !ok {
+		m.entries["moonshot/kimi-k2.5"] = Pricing{
+			Input:          0.6e-6,
+			Output:         3e-6,
+			CacheCreate:    0.75e-6,
+			CacheRead:      0.1e-6,
+			FastMultiplier: 1.0,
+		}
+	}
+	if _, ok := m.entries["moonshot/kimi-k2.6"]; !ok {
+		m.entries["moonshot/kimi-k2.6"] = Pricing{
+			Input:          0.95e-6,
+			Output:         4e-6,
+			CacheCreate:    1.1875e-6,
+			CacheRead:      0.16e-6,
+			FastMultiplier: 1.0,
+		}
+	}
 }
 
 // LoadJSON merges entries from a raw LiteLLM-style JSON blob. Unknown fields

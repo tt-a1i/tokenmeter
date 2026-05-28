@@ -250,6 +250,7 @@ func processClaudeFileCollect(path, sessionID string, startOffset int64, prevGit
 
 	reader := bufio.NewReaderSize(f, 1024*1024)
 	committedOffset := startOffset
+	deduper := newClaudeTokenDeduper()
 	linesRead := 0
 
 	for {
@@ -271,7 +272,7 @@ func processClaudeFileCollect(path, sessionID string, startOffset int64, prevGit
 					if ev, newBranch, ok := parseClaudeLogTokenEvent(entry, sessionID, result.gitBranch); ok || newBranch != result.gitBranch {
 						result.gitBranch = newBranch
 						if ok {
-							result.events = append(result.events, ev)
+							result.events = deduper.append(result.events, entry, ev)
 						}
 					}
 				}
@@ -289,6 +290,55 @@ func processClaudeFileCollect(path, sessionID string, startOffset int64, prevGit
 
 	result.offset = committedOffset
 	return result
+}
+
+type claudeTokenDeduper struct {
+	byUUID map[string]int
+	rows   []claudeTokenDedupeRow
+}
+
+type claudeTokenDedupeRow struct {
+	sidechain bool
+	score     int
+	cost      float64
+}
+
+func newClaudeTokenDeduper() *claudeTokenDeduper {
+	return &claudeTokenDeduper{byUUID: make(map[string]int)}
+}
+
+func (d *claudeTokenDeduper) append(events []event.Event, entry claudeLogEntry, ev event.Event) []event.Event {
+	if entry.UUID == "" {
+		return append(events, ev)
+	}
+	candidate := claudeTokenDedupeRow{
+		sidechain: entry.IsSidechain,
+		score:     ev.Data.InputTokens + ev.Data.OutputTokens,
+		cost:      ev.Data.CostUSD,
+	}
+	if idx, ok := d.byUUID[entry.UUID]; ok {
+		if claudeTokenDedupePrefers(candidate, d.rows[idx]) {
+			events[idx] = ev
+			d.rows[idx] = candidate
+		}
+		return events
+	}
+	d.byUUID[entry.UUID] = len(events)
+	d.rows = append(d.rows, candidate)
+	return append(events, ev)
+}
+
+func claudeTokenDedupePrefers(candidate, existing claudeTokenDedupeRow) bool {
+	if existing.sidechain && !candidate.sidechain {
+		return true
+	}
+	if !existing.sidechain && candidate.sidechain {
+		return false
+	}
+	if candidate.score != existing.score {
+		return candidate.score > existing.score
+	}
+	return candidate.cost > existing.cost
 }
 
 // parseClaudeLogTokenEvent extracts a TokenUsage event from a parsed log
@@ -315,8 +365,12 @@ func parseClaudeLogTokenEvent(entry claudeLogEntry, sessionID, gitBranch string)
 	model := entry.Message.Model
 	totalInput := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
 	cost := EstimateClaudeCost(usage.InputTokens, usage.OutputTokens, usage.CacheCreationInputTokens, usage.CacheReadInputTokens, model)
+	sourceID := fmt.Sprintf("claude-tokens-%s-%s", sessionID, entry.UUID)
+	if entry.IsSidechain {
+		sourceID = fmt.Sprintf("claude-tokens-sidechain-%s-%s-%s", sessionID, entry.UUID, entry.RequestID)
+	}
 	return event.Event{
-		ID:        fmt.Sprintf("claude-tokens-%s-%s", sessionID, entry.UUID),
+		ID:        sourceID,
 		Type:      event.EventTokenUsage,
 		SessionID: sessionID,
 		Platform:  event.PlatformClaude,
@@ -336,13 +390,15 @@ func parseClaudeLogTokenEvent(entry claudeLogEntry, sessionID, gitBranch string)
 }
 
 type claudeLogEntry struct {
-	Type      string        `json:"type"`
-	SessionID string        `json:"sessionId"`
-	UUID      string        `json:"uuid"`
-	GitBranch string        `json:"gitBranch"`
-	CWD       string        `json:"cwd"`
-	Timestamp string        `json:"timestamp"`
-	Message   *claudeLogMsg `json:"message,omitempty"`
+	Type        string        `json:"type"`
+	SessionID   string        `json:"sessionId"`
+	UUID        string        `json:"uuid"`
+	RequestID   string        `json:"requestId"`
+	IsSidechain bool          `json:"isSidechain"`
+	GitBranch   string        `json:"gitBranch"`
+	CWD         string        `json:"cwd"`
+	Timestamp   string        `json:"timestamp"`
+	Message     *claudeLogMsg `json:"message,omitempty"`
 }
 
 type claudeLogMsg struct {
@@ -389,6 +445,8 @@ func (w *ClaudeLogWatcher) processFile(path, sessionID string) {
 
 	reader := bufio.NewReaderSize(f, 1024*1024)
 	committedOffset := offset
+	deduper := newClaudeTokenDeduper()
+	var bufferedEvents []event.Event
 	linesRead := 0
 
 	for {
@@ -414,7 +472,7 @@ func (w *ClaudeLogWatcher) processFile(path, sessionID string) {
 						w.sessionGitBranch[sessionID] = newBranch
 					}
 					if ok {
-						w.emitFn(ev)
+						bufferedEvents = deduper.append(bufferedEvents, entry, ev)
 					}
 				}
 			}
@@ -432,4 +490,7 @@ func (w *ClaudeLogWatcher) processFile(path, sessionID string) {
 	}
 
 	w.seen[path] = committedOffset
+	for _, ev := range bufferedEvents {
+		w.emitFn(ev)
+	}
 }

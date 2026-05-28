@@ -232,6 +232,48 @@ func TestParseClaudeFileEventsContract(t *testing.T) {
 	}
 }
 
+func TestParseClaudeFileEventsDedupesSidechainReplay(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	body := `{"type":"assistant","sessionId":"s","uuid":"msg-1","requestId":"side-req","isSidechain":true,"timestamp":"2026-01-14T12:07:10Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}}` + "\n" +
+		`{"type":"assistant","sessionId":"s","uuid":"msg-1","requestId":"main-req","isSidechain":false,"timestamp":"2026-01-14T12:07:11Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got := ParseClaudeFileEvents(path, "s")
+	if len(got) != 1 {
+		t.Fatalf("got %d events, want 1: %#v", len(got), got)
+	}
+	if got[0].ID != "claude-tokens-s-msg-1" {
+		t.Fatalf("kept event ID = %q, want non-sidechain ID", got[0].ID)
+	}
+	if got[0].Data.InputTokens != 100 || got[0].Data.OutputTokens != 50 {
+		t.Fatalf("kept tokens = input %d output %d, want 100/50", got[0].Data.InputTokens, got[0].Data.OutputTokens)
+	}
+}
+
+func TestParseClaudeFileEventsSidechainDuplicateKeepsLargerUsage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	body := `{"type":"assistant","sessionId":"s","uuid":"msg-2","requestId":"side-req-1","isSidechain":true,"timestamp":"2026-01-14T12:07:10Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}}` + "\n" +
+		`{"type":"assistant","sessionId":"s","uuid":"msg-2","requestId":"side-req-2","isSidechain":true,"timestamp":"2026-01-14T12:07:11Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":30,"output_tokens":9}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got := ParseClaudeFileEvents(path, "s")
+	if len(got) != 1 {
+		t.Fatalf("got %d events, want 1: %#v", len(got), got)
+	}
+	if got[0].ID != "claude-tokens-sidechain-s-msg-2-side-req-2" {
+		t.Fatalf("kept event ID = %q, want larger sidechain request", got[0].ID)
+	}
+	if got[0].Data.InputTokens != 30 || got[0].Data.OutputTokens != 9 {
+		t.Fatalf("kept tokens = input %d output %d, want 30/9", got[0].Data.InputTokens, got[0].Data.OutputTokens)
+	}
+}
+
 // TestAddColumnIfMissingViaPragma verifies the PRAGMA-based existence check
 // doesn't depend on the SQLite driver's error wording.
 func TestAddColumnIfMissingViaPragma(t *testing.T) {

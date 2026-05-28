@@ -12,7 +12,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/tt-a1i/tokenmeter/internal/pricing"
 )
 
 const (
@@ -22,7 +25,60 @@ const (
 	kimiWireFileName   = "wire.jsonl"
 	kimiConfigFile     = "config.json"
 	kimiSource         = "kimi"
+
+	// kimiForCodingK26CutoffMs is the inclusive boundary at which the
+	// default "kimi-for-coding" model switches from kimi-k2.5 to
+	// kimi-k2.6 pricing. Mirrors ccusage's KIMI_FOR_CODING_K2_6_CUTOFF_MS
+	// in rust/crates/ccusage/src/adapter/kimi/parser.rs:18.
+	kimiForCodingK26CutoffMs int64 = 1_776_698_890_072
 )
+
+var (
+	kimiPricingOnce sync.Once
+	kimiPricingMap  *pricing.Map
+)
+
+// getKimiPricing returns a lazily-initialized pricing map. Defers the
+// embedded-snapshot parse off package init so importing collector stays
+// cheap for callers that never touch Kimi entries.
+func getKimiPricing() *pricing.Map {
+	kimiPricingOnce.Do(func() {
+		kimiPricingMap = pricing.LoadEmbedded()
+	})
+	return kimiPricingMap
+}
+
+// kimiForCodingPricingModel maps a timestamp to the per-period Moonshot
+// model name used for cost calculation when the configured display model
+// is the default "kimi-for-coding". Display model is intentionally left
+// unchanged on the UsageEntry so the user-facing breakdown still shows
+// "kimi-for-coding"; only cost calculation re-routes to k2.5 or k2.6.
+func kimiForCodingPricingModel(ts time.Time) string {
+	if ts.UnixMilli() < kimiForCodingK26CutoffMs {
+		return "moonshot/kimi-k2.5"
+	}
+	return "moonshot/kimi-k2.6"
+}
+
+// computeKimiCostUSD returns the per-entry cost. Non-default models stay
+// at 0 so the AllSource ModeAuto path re-prices via pricing.Resolve on
+// the configured model name.
+func computeKimiCostUSD(model string, ts time.Time, in, out, cc, cr int64) float64 {
+	if model != kimiDefaultModel {
+		return 0
+	}
+	candidate := kimiForCodingPricingModel(ts)
+	p, ok := getKimiPricing().Resolve(candidate)
+	if !ok {
+		return 0
+	}
+	return pricing.CalculateCost(p, pricing.Usage{
+		Input:       in,
+		Output:      out,
+		CacheCreate: cc,
+		CacheRead:   cr,
+	}, pricing.SpeedStandard)
+}
 
 // LoadKimiEntries scans Kimi CLI wire.jsonl files under the directories
 // listed in $KIMI_DATA_DIR (comma-separated) or, if the env var is unset,
@@ -43,10 +99,17 @@ const (
 //	input_cache_read     -> CacheReadInputTokens
 //	total (fallback)     -> OutputTokens (when individual parts are all zero)
 //
-// CostUSD is left at zero — the RunAggregateAllSource ModeAuto fallback
-// fills it when pricing.Resolve can match the model. A missing/unreadable
-// data root is treated as "user does not have Kimi installed" and yields
-// (nil, nil) so the merge loop continues.
+// CostUSD policy mirrors ccusage's calculate_kimi_cost
+// (rust/crates/ccusage/src/adapter/kimi/parser.rs:208-254): when the
+// display model is the default "kimi-for-coding", cost is computed per
+// entry against the period-appropriate Moonshot price
+// (moonshot/kimi-k2.5 before the k2.6 cutoff, moonshot/kimi-k2.6 at or
+// after) without changing the visible Model field. Any other configured
+// model leaves CostUSD at zero so RunAggregateAllSource's ModeAuto path
+// re-prices via pricing.Resolve.
+//
+// A missing/unreadable data root is treated as "user does not have Kimi
+// installed" and yields (nil, nil) so the merge loop continues.
 func LoadKimiEntries(_ context.Context, opts AdapterOpts) ([]UsageEntry, error) {
 	roots := kimiRoots()
 	if len(roots) == 0 {
@@ -260,6 +323,7 @@ func parseKimiWireLine(line []byte, sessionID, model string) (UsageEntry, bool) 
 		OutputTokens:             out,
 		CacheCreationInputTokens: cc,
 		CacheReadInputTokens:     cr,
+		CostUSD:                  computeKimiCostUSD(model, ts, in, out, cc, cr),
 	}, true
 }
 
