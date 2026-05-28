@@ -164,6 +164,31 @@ func TestResolveBidirectionalContainsMatch(t *testing.T) {
 	})
 }
 
+// TestResolveBidirectionalContainsTieBreakSmaller pins ccusage's
+// equal-length tie-break direction
+// (rust/crates/ccusage/src/pricing.rs:185-186 / 200-201): inside the
+// max_by comparator, `right.cmp(left)` inverts the lexical comparison
+// so the lexically *smaller* key wins on length ties. TokenMeter has to
+// match this so a snapshot with parallel siblings of the same length
+// resolves to the same entry ccusage would pick.
+func TestResolveBidirectionalContainsTieBreakSmaller(t *testing.T) {
+	m := &pricing.Map{}
+	if err := m.LoadJSON([]byte(`{
+        "claude-sonnet-zzz": {"input_cost_per_token": "0.000009"},
+        "claude-sonnet-aaa": {"input_cost_per_token": "0.000001"}
+    }`)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	got, ok := m.Resolve("claude-sonnet")
+	if !ok {
+		t.Fatal("Resolve(claude-sonnet) = (_, false); want bidirectional contains hit on either equal-length sibling")
+	}
+	want, _ := m.Lookup("claude-sonnet-aaa")
+	if got != want {
+		t.Errorf("Resolve(claude-sonnet) = %+v; want pricing of claude-sonnet-aaa = %+v (ccusage tie-break picks lexically smaller)", got, want)
+	}
+}
+
 // TestResolveBedrockFormStillWorks pins that the normalization changes
 // do not break existing Bedrock-style resolution. "us.anthropic.claude-…"
 // keys exist verbatim in the snapshot with region-specific rates, so the

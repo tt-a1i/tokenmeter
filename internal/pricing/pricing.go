@@ -230,7 +230,13 @@ func (m *Map) bidirectionalContainsMatch(model string, normalizer *strings.Repla
 		if !containsWithBoundary(keyNorm, inputNorm) && !containsWithBoundary(inputNorm, keyNorm) {
 			continue
 		}
-		if len(key) > len(bestKey) || (len(key) == len(bestKey) && key > bestKey) {
+		// Tie-break direction mirrors ccusage's
+		// `left.len().cmp(&right.len()).then_with(|| right.cmp(left))`
+		// inside max_by (rust/crates/ccusage/src/pricing.rs:185-186):
+		// on equal length the lexically *smaller* key wins. The
+		// length-greater branch already lets the first non-empty key
+		// seed bestKey from the empty sentinel.
+		if len(key) > len(bestKey) || (len(key) == len(bestKey) && key < bestKey) {
 			bestKey = key
 		}
 	}
