@@ -313,7 +313,7 @@ func (d *claudeTokenDeduper) append(events []event.Event, entry claudeLogEntry, 
 	}
 	candidate := claudeTokenDedupeRow{
 		sidechain: entry.IsSidechain,
-		score:     ev.Data.InputTokens + ev.Data.OutputTokens,
+		score:     ev.Data.InputTokens + ev.Data.OutputTokens + ev.Data.CacheCreationTokens + ev.Data.CacheReadTokens,
 		cost:      ev.Data.CostUSD,
 	}
 	if idx, ok := d.byUUID[entry.UUID]; ok {

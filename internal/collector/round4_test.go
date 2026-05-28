@@ -274,6 +274,27 @@ func TestParseClaudeFileEventsSidechainDuplicateKeepsLargerUsage(t *testing.T) {
 	}
 }
 
+func TestParseClaudeFileEventsSidechainDedupeScoresCacheTokens(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	body := `{"type":"assistant","sessionId":"s","uuid":"msg-cache","requestId":"side-req-1","isSidechain":true,"timestamp":"2026-01-14T12:07:10Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":300,"output_tokens":300}}}` + "\n" +
+		`{"type":"assistant","sessionId":"s","uuid":"msg-cache","requestId":"side-req-2","isSidechain":true,"timestamp":"2026-01-14T12:07:11Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":500}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got := ParseClaudeFileEvents(path, "s")
+	if len(got) != 1 {
+		t.Fatalf("got %d events, want 1: %#v", len(got), got)
+	}
+	if got[0].ID != "claude-tokens-sidechain-s-msg-cache-side-req-2" {
+		t.Fatalf("kept event ID = %q, want cache-heavy sidechain request", got[0].ID)
+	}
+	if got[0].Data.CacheReadTokens != 500 {
+		t.Fatalf("kept cache read = %d, want 500", got[0].Data.CacheReadTokens)
+	}
+}
+
 // TestAddColumnIfMissingViaPragma verifies the PRAGMA-based existence check
 // doesn't depend on the SQLite driver's error wording.
 func TestAddColumnIfMissingViaPragma(t *testing.T) {
