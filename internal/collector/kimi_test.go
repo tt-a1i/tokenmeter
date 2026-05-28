@@ -130,8 +130,8 @@ func TestKimiForCodingTimestampSensitivePricing(t *testing.T) {
 		t.Errorf("at.Model=%q want kimi-for-coding", at.Model)
 	}
 
-	const beforeWant = 0.000226     // k2.5 prices
-	const atWant = 0.00032035       // k2.6 prices
+	const beforeWant = 0.000226 // k2.5 prices
+	const atWant = 0.00032035   // k2.6 prices
 	const epsilon = 1e-9
 	if math.Abs(before.CostUSD-beforeWant) > epsilon {
 		t.Errorf("before.CostUSD=%.9f want %.9f (kimi-k2.5)", before.CostUSD, beforeWant)

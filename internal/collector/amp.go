@@ -188,9 +188,9 @@ func parseAmpMessagesUsage(messages []json.RawMessage, threadID string) []UsageE
 
 func parseAmpMessageUsage(raw json.RawMessage, threadID string) (UsageEntry, bool) {
 	var msg struct {
-		Role      string          `json:"role"`
-		Timestamp string          `json:"timestamp"`
-		Model     string          `json:"model"`
+		Role      string `json:"role"`
+		Timestamp string `json:"timestamp"`
+		Model     string `json:"model"`
 		Usage     *struct {
 			Timestamp                string          `json:"timestamp"`
 			Model                    string          `json:"model"`
