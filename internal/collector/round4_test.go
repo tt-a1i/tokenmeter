@@ -404,7 +404,7 @@ func TestParseClaudeFileEventsSidechainDuplicateKeepsLargerUsage(t *testing.T) {
 func TestParseClaudeFileEventsSidechainDedupeScoresCacheTokens(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")
-	body := `{"type":"assistant","sessionId":"s","uuid":"msg-cache","requestId":"side-req-1","isSidechain":true,"timestamp":"2026-01-14T12:07:10Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":300,"output_tokens":300}}}` + "\n" +
+	body := `{"type":"assistant","sessionId":"s","uuid":"msg-cache","requestId":"side-req-1","isSidechain":true,"timestamp":"2026-01-14T12:07:10Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}}` + "\n" +
 		`{"type":"assistant","sessionId":"s","uuid":"msg-cache","requestId":"side-req-2","isSidechain":true,"timestamp":"2026-01-14T12:07:11Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":500}}}` + "\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write: %v", err)

@@ -315,8 +315,10 @@ func (d *claudeTokenDeduper) append(events []event.Event, entry claudeLogEntry, 
 	}
 	candidate := claudeTokenDedupeRow{
 		sidechain: entry.IsSidechain,
-		score:     ev.Data.InputTokens + ev.Data.OutputTokens + ev.Data.CacheCreationTokens + ev.Data.CacheReadTokens,
-		cost:      ev.Data.CostUSD,
+		// EventData.InputTokens already includes cache creation/read tokens for
+		// Claude, so input + output matches ccusage's raw+cache+output total.
+		score: ev.Data.InputTokens + ev.Data.OutputTokens,
+		cost:  ev.Data.CostUSD,
 	}
 	if idx, ok := d.byUUID[entry.UUID]; ok {
 		// A watcher-scoped deduper can remember UUIDs from an earlier
