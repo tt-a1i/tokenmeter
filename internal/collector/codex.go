@@ -1114,6 +1114,9 @@ func (u codexExecUsage) tokenUsage() codexTokenUsage {
 	if cache == 0 {
 		cache = u.CachedTokens
 	}
+	if cache > input {
+		cache = input
+	}
 	total := u.TotalTokens
 	if total == 0 {
 		total = input + output

@@ -366,6 +366,36 @@ func TestCodexWatcher_LoadsSavedExecJSONReasoningOutputTokens(t *testing.T) {
 	}
 }
 
+func TestCodexWatcher_LoadsSavedExecJSONClampsCachedTokens(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "savedexec-cache-1111-1111-111111111111"
+	path := filepath.Join(dir, "run-"+sessionID+".jsonl")
+	writeLinesToFile(t, path,
+		`{"type":"turn.completed","timestamp":"2026-01-02T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":100,"cached_input_tokens":200,"output_tokens":30,"total_tokens":130}}`,
+	)
+
+	var emitted []event.Event
+	w := NewCodexWatcher(func(ev event.Event) { emitted = append(emitted, ev) })
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat test file: %v", err)
+	}
+	w.processFile(path, info.Size())
+
+	var tokenEvents []event.Event
+	for _, ev := range emitted {
+		if ev.Type == event.EventTokenUsage {
+			tokenEvents = append(tokenEvents, ev)
+		}
+	}
+	if len(tokenEvents) != 1 {
+		t.Fatalf("expected 1 saved exec token event, got %d: %#v", len(tokenEvents), tokenEvents)
+	}
+	if tokenEvents[0].Data.CacheReadTokens != 100 {
+		t.Fatalf("CacheReadTokens=%d want 100 (clamped to input)", tokenEvents[0].Data.CacheReadTokens)
+	}
+}
+
 func TestCodexWatcher_DedupesCopiedBranchHistoryFromTotalUsage(t *testing.T) {
 	dir := t.TempDir()
 	parentID := "parent11-1111-1111-1111-111111111111"
