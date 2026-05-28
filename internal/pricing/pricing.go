@@ -8,6 +8,8 @@ package pricing
 import (
 	_ "embed"
 	"encoding/json"
+	"sort"
+	"strings"
 )
 
 //go:embed litellm-snapshot.json
@@ -118,69 +120,87 @@ func (m *Map) Lookup(model string) (Pricing, bool) {
 	return p, ok
 }
 
-// Resolve returns pricing for a model name, attempting (in order):
-//  1. exact match
-//  2. provider-stripped match: "anthropic/claude-sonnet-4-6" → "claude-sonnet-4-6"
-//  3. region-prefixed Bedrock IDs: "us.anthropic.claude-sonnet-4-6" → "claude-sonnet-4-6"
+// Resolve returns pricing for a model name. After the exact-match miss
+// it generates a candidate set, tries each by length descending so the
+// longest plausible match wins, and returns the first hit. Candidates
+// cover, in roughly this order:
 //
-// Returns ok=false if no candidate matches.
+//  1. Exact match.
+//  2. Provider-strip — substring after the last "/" or "." in the input
+//     ("anthropic/claude-sonnet-4-6" → "claude-sonnet-4-6").
+//  3. Dot/at-separator normalization — replaces "." and "@" with "-"
+//     ("claude.sonnet.4" → "claude-sonnet-4"), mirroring ccusage v20's
+//     normalized_pricing_key (rust/crates/ccusage/src/pricing.rs:604-610).
+//  4. Leading-segment drops on the normalized form so vendor-prefixed
+//     dotted aliases land on the canonical key without an O(N) scan
+//     ("anthropic.claude.sonnet.4" → "claude-sonnet-4").
+//  5. Region-prefixed Bedrock joinFrom — keeps the existing
+//     "us.anthropic.claude-…" → "claude-…" fallback for unknown regions
+//     when the verbatim "<region>.anthropic.<model>" key is absent.
+//
+// Returns ok=false if no candidate matches any entry.
 func (m *Map) Resolve(model string) (Pricing, bool) {
 	if p, ok := m.entries[model]; ok {
 		return p, true
 	}
-	candidates := []string{}
-	for _, sep := range []string{"/", "."} {
-		if i := lastIndex(model, sep); i >= 0 {
-			candidates = append(candidates, model[i+1:])
+
+	seen := map[string]bool{model: true}
+	var candidates []string
+	normalizer := strings.NewReplacer(".", "-", "@", "-")
+	add := func(c string) {
+		if c == "" || seen[c] {
+			return
+		}
+		seen[c] = true
+		candidates = append(candidates, c)
+		// Mirror ccusage's normalize-then-match by also seeding the
+		// dot/at-stripped form of every candidate. This catches inputs
+		// like "anthropic/claude.sonnet.4" where the after-"/" suffix
+		// still carries dotted separators.
+		if norm := normalizer.Replace(c); norm != c {
+			if !seen[norm] {
+				seen[norm] = true
+				candidates = append(candidates, norm)
+			}
 		}
 	}
-	// Bedrock-style: "us.anthropic.claude-…"
-	if parts := splitAll(model, '.'); len(parts) >= 3 {
-		candidates = append(candidates, joinFrom(parts, 2, '-'))
+
+	for _, sep := range []string{"/", "."} {
+		if i := strings.LastIndex(model, sep); i >= 0 {
+			add(model[i+1:])
+		}
 	}
+
+	normalized := normalizer.Replace(model)
+	if normalized != model {
+		add(normalized)
+	}
+
+	// Drop leading hyphen-separated segments on the normalized form so a
+	// vendor prefix collapses cleanly: "anthropic-claude-sonnet-4" →
+	// "claude-sonnet-4" → "sonnet-4" → "4". Each shorter form joins the
+	// candidate pool; the length-desc sort below picks the longest hit.
+	if dashParts := strings.Split(normalized, "-"); len(dashParts) > 1 {
+		for i := 1; i < len(dashParts); i++ {
+			add(strings.Join(dashParts[i:], "-"))
+		}
+	}
+
+	// Bedrock-style fallback: "us.anthropic.claude-…" → "claude-…"
+	if parts := strings.Split(model, "."); len(parts) >= 3 {
+		add(strings.Join(parts[2:], "-"))
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return len(candidates[i]) > len(candidates[j])
+	})
+
 	for _, c := range candidates {
 		if p, ok := m.entries[c]; ok {
 			return p, true
 		}
 	}
 	return Pricing{}, false
-}
-
-func lastIndex(s, sep string) int {
-	idx := -1
-	for i := range s {
-		if i+len(sep) <= len(s) && s[i:i+len(sep)] == sep {
-			idx = i
-		}
-	}
-	return idx
-}
-
-func splitAll(s string, sep byte) []string {
-	var out []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == sep {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	out = append(out, s[start:])
-	return out
-}
-
-func joinFrom(parts []string, from int, sep byte) string {
-	if from >= len(parts) {
-		return ""
-	}
-	var b []byte
-	for i := from; i < len(parts); i++ {
-		if i > from {
-			b = append(b, sep)
-		}
-		b = append(b, parts[i]...)
-	}
-	return string(b)
 }
 
 type liteLLMEntry struct {
@@ -210,7 +230,7 @@ func fastMultiplierOverride(model string) float64 {
 		return 2.0
 	}
 	normalized := model
-	if i := lastIndex(normalized, "/"); i >= 0 {
+	if i := strings.LastIndex(normalized, "/"); i >= 0 {
 		normalized = normalized[i+1:]
 	}
 	for _, prefix := range []string{"us.", "eu.", "global.", "jp.", "au."} {

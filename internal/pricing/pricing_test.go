@@ -58,6 +58,79 @@ func TestResolveUnknownReturnsFalse(t *testing.T) {
 	}
 }
 
+// TestResolveNormalizesDotAndAtSeparators mirrors ccusage v20's
+// pricing-key normalization (rust/crates/ccusage/src/pricing.rs:604-610):
+// "." and "@" between segments are equivalent to "-" so model names from
+// the Anthropic console / API console paste ("claude.sonnet.4") and the
+// alternative "@"-separated alias ("claude@sonnet@4") still find the
+// canonical pricing entry. Boundary-aware longest-match also strips
+// vendor prefixes ("anthropic.claude.sonnet.4" → "claude-sonnet-4")
+// without an O(N) entry scan.
+func TestResolveNormalizesDotAndAtSeparators(t *testing.T) {
+	m := pricing.LoadEmbedded()
+	// Seed a known canonical short name so the test does not depend on a
+	// specific snapshot version (the embedded snapshot ships
+	// claude-sonnet-4-6 etc., but not a plain claude-sonnet-4).
+	if err := m.LoadJSON([]byte(`{
+        "claude-sonnet-4": {"input_cost_per_token": "0.000003"}
+    }`)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	cases := []struct {
+		in   string
+		desc string
+	}{
+		{"claude-sonnet-4", "canonical name is not broken"},
+		{"claude.sonnet.4", "dot-separator normalizes"},
+		{"claude@sonnet@4", "at-separator normalizes"},
+		{"anthropic.claude.sonnet.4", "vendor-prefixed dot form strips leading segment"},
+		{"anthropic/claude.sonnet.4", "slash vendor + dotted model"},
+	}
+	for _, tc := range cases {
+		p, ok := m.Resolve(tc.in)
+		if !ok {
+			t.Errorf("Resolve(%q) = false; want hit (%s)", tc.in, tc.desc)
+			continue
+		}
+		if p.Input != 3e-6 {
+			t.Errorf("Resolve(%q) input=%v; want 3e-6 (%s)", tc.in, p.Input, tc.desc)
+		}
+	}
+}
+
+// TestResolveBedrockFormStillWorks pins that the normalization changes
+// do not break existing Bedrock-style resolution. "us.anthropic.claude-…"
+// keys exist verbatim in the snapshot with region-specific rates, so the
+// exact-match path must still win over any normalization fallback.
+func TestResolveBedrockFormStillWorks(t *testing.T) {
+	m := pricing.LoadEmbedded()
+	got, ok := m.Resolve("us.anthropic.claude-sonnet-4-6")
+	if !ok {
+		t.Fatal("Bedrock form us.anthropic.claude-sonnet-4-6 must still resolve")
+	}
+	exact, _ := m.Lookup("us.anthropic.claude-sonnet-4-6")
+	if got != exact {
+		t.Errorf("Bedrock Resolve must equal exact Lookup (no normalization shadowing)\n got=%+v\nwant=%+v", got, exact)
+	}
+}
+
+// TestResolveBedrockJoinFromForUnknownPrefix keeps the existing
+// "us.anthropic.<canonical>" → "<canonical>" fallback live for unknown
+// regional prefixes the snapshot does not carry verbatim. The synthetic
+// region "xx" exercises the Bedrock joinFrom path.
+func TestResolveBedrockJoinFromForUnknownPrefix(t *testing.T) {
+	m := pricing.LoadEmbedded()
+	got, ok := m.Resolve("xx.anthropic.claude-sonnet-4-6")
+	if !ok {
+		t.Fatal("Unknown-region Bedrock alias must fall back to canonical key")
+	}
+	want, _ := m.Lookup("claude-sonnet-4-6")
+	if got != want {
+		t.Errorf("Bedrock joinFrom fallback differs from canonical lookup\n got=%+v\nwant=%+v", got, want)
+	}
+}
+
 // TestEmbeddedMoonshotKimiBuiltinPrices pins the hard-coded Moonshot
 // price fallback the refresh-pricing prefix filter would otherwise drop.
 // The Kimi adapter routes "kimi-for-coding" usage to one of these names
