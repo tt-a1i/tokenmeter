@@ -3,11 +3,56 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
-## Unreleased
+## v1.3.0 — 2026-05-28
+
+ccusage v18→v20 alignment — 8 gaps + 11 review findings + 3 residuals closed across 29 commits and 5 review waves.
+
+### Aligned to ccusage v20 (8 P1 gaps from .hive/v1.2-post-ship-gap.md)
+
+- Codex saved exec JSON usage parsing (G1).
+- Amp `messages[].usage` fallback when `usageLedger` is absent (G2).
+- Kimi `kimi-for-coding` timestamp-sensitive pricing (`k2.5` / `k2.6` cutoff) (G3).
+- Claude sidechain replay dedupe with non-sidechain preference (G4).
+- Codex copied branch history cross-session dedupe (G5).
+- Dot/at-separated alias normalization in `pricing.Resolve` (G6).
+- Dashed `--since` / `--until` date flag support (G7).
+- `COLUMNS` env terminal width detection (G8).
+
+### Strict ccusage parity refinements (Wave 1.5 + 1.75 review findings)
+
+- Bidirectional contains+boundary match for partial model name resolution.
+- `reasoning_output_tokens` folded into Codex output total for cost calculation.
+- `cached_input_tokens` clamped to `input_tokens` defensively.
+- Codex saved exec model fallback to `gpt-5` when missing.
+- Cache tokens included in sidechain dedupe score, with the cache double-count bug fixed.
+- Same-uuid dedupe gated to require at least one sidechain side.
+- Tie-break by lexically smaller key on equal-length pricing match.
+- Codex `event_msg` / `token_count` path applies reasoning fold, cache clamp, and `gpt-5` fallback consistently.
+
+### Codex per-row metadata (Wave 1.85 residuals)
+
+- `reasoning_output_tokens` surfaced as independent `EventData` field, matching ccusage `CodexRawUsage`.
+- `is_fallback_model` flag distinguishes synthetic `gpt-5` fallback from explicit `gpt-5` model.
+- Codex `source_id` now includes reasoning dimension to prevent UNIQUE index false-positive collapse.
+- Schema: `token_usage` adds `reasoning_output_tokens INTEGER NOT NULL DEFAULT 0` and `is_fallback_model INTEGER NOT NULL DEFAULT 0` columns via idempotent `addColumnIfMissing` migration.
+
+### Streaming watcher correctness (Wave 1.85 residual #1 + Wave 1.95 P1 fix)
+
+- `claudeTokenDeduper` redesigned: `byUUID` now stores `claudeTokenDedupeRow` (`source_id` + score + cost + sidechain) instead of a slice index, enabling cross-pass strictly-better-wins replacement.
+- `storage.DeleteTokenUsageBySourceID` rolls back `sessions.total_*` and `daily_cost_cache.cost_usd` aggregates inside a single transaction (Wave 4 P1 fix).
+- Watcher emits and persists the better candidate even when the original was already written in a prior tick.
 
 ### Internal
 
 - **Claude token event source_id format changed**: now includes requestID for non-sidechain rows when present, to align with ccusage's same-uuid + different-requestID dedupe semantics. Existing DB rows from pre-upgrade daemon runs use the old format `claude-tokens-<session>-<uuid>` and will not collide with new-format IDs `claude-tokens-<session>-<uuid>-<requestID>`. A full rescan after upgrade may double-count Claude token rows. To avoid double-counting: keep the daemon running through upgrade (incremental `seen[]` offsets preserve dedup), or drop and recreate the database with `rm ~/.tokenmeter/data/tokenmeter.db && tm daemon`.
+
+### Out of scope (intentional route divergence)
+
+- Rust native CLI vs Go binary.
+- npm package distribution vs GoReleaser + Homebrew cask.
+- Read-only one-shot CLI vs daemon + hook + socket + web dashboard.
+- Statusline today-cost field: TokenMeter shows active block instead.
+- TokenMeter super-set features (budget, webhook anomaly, FTS5 search, analyze, doctor, backup-restore, watch, web UI) intentionally kept.
 
 ## v1.2.0 — TBD
 
