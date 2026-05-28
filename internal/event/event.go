@@ -69,6 +69,20 @@ type EventData struct {
 	CacheReadTokens     int    `json:"cache_read_tokens,omitempty"`
 	Model               string `json:"model,omitempty"`
 
+	// ReasoningOutputTokens is the o1-style reasoning-trace token count
+	// surfaced by Codex independently of OutputTokens. Cost calc folds it
+	// into OutputTokens (matching ccusage's output rate), but persisting
+	// the raw value lets downstream analytics distinguish reasoning vs.
+	// plain output and feeds the Codex dedupe source_id so two rows that
+	// differ only on reasoning are not collapsed.
+	ReasoningOutputTokens int `json:"reasoning_output_tokens,omitempty"`
+
+	// IsFallbackModel is true when Model is a defaulted "gpt-5" because
+	// the source log did not record a model. Mirrors ccusage's
+	// is_fallback_model column so users can tell defaulted rows apart
+	// from rows where the log explicitly said gpt-5.
+	IsFallbackModel bool `json:"is_fallback_model,omitempty"`
+
 	// Cost fields
 	CostUSD float64 `json:"cost_usd,omitempty"`
 
