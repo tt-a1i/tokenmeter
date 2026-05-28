@@ -209,6 +209,113 @@ func TestCodexWatcher_EventMsgPreservesReasoningOutputTokensField(t *testing.T) 
 	}
 }
 
+// TestCodexWatcher_SavedExecMissingModelSetsFallbackFlag pins ccusage
+// residual-#3 parity (parser.rs:260): when neither the entry's own
+// model column nor a runtime sessionModel is available, the saved-exec
+// path defaults to "gpt-5" AND flags the event with IsFallbackModel=true
+// so reporting can tell defaulted rows apart from genuine gpt-5 traffic.
+func TestCodexWatcher_SavedExecMissingModelSetsFallbackFlag(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "savedexec-fallback-1111-1111-111111111111"
+	path := filepath.Join(dir, "run-"+sessionID+".jsonl")
+	// No "model" field anywhere — and the watcher's session map is
+	// empty for this fresh path, so the chain falls all the way through
+	// to the "gpt-5" default.
+	writeLinesToFile(t, path,
+		`{"type":"turn.completed","timestamp":"2026-01-02T03:04:05.000Z","usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150}}`,
+	)
+
+	var emitted []event.Event
+	w := NewCodexWatcher(func(ev event.Event) { emitted = append(emitted, ev) })
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	w.processFile(path, info.Size())
+
+	var tokenEvents []event.Event
+	for _, ev := range emitted {
+		if ev.Type == event.EventTokenUsage {
+			tokenEvents = append(tokenEvents, ev)
+		}
+	}
+	if len(tokenEvents) != 1 {
+		t.Fatalf("expected 1 token event, got %d", len(tokenEvents))
+	}
+	if tokenEvents[0].Data.Model != "gpt-5" {
+		t.Fatalf("Model=%q want gpt-5 (fallback)", tokenEvents[0].Data.Model)
+	}
+	if !tokenEvents[0].Data.IsFallbackModel {
+		t.Fatalf("IsFallbackModel=false want true (residual #3)")
+	}
+}
+
+// TestCodexWatcher_SavedExecExplicitModelClearsFallbackFlag pins the
+// inverse: when the entry carries an explicit model name, IsFallbackModel
+// stays false even though the chain endpoint is also "gpt-5".
+func TestCodexWatcher_SavedExecExplicitModelClearsFallbackFlag(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "savedexec-explicit-1111-1111-111111111111"
+	path := filepath.Join(dir, "run-"+sessionID+".jsonl")
+	writeLinesToFile(t, path,
+		`{"type":"turn.completed","timestamp":"2026-01-02T03:04:05.000Z","model":"gpt-5","usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150}}`,
+	)
+
+	var emitted []event.Event
+	w := NewCodexWatcher(func(ev event.Event) { emitted = append(emitted, ev) })
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	w.processFile(path, info.Size())
+
+	for _, ev := range emitted {
+		if ev.Type != event.EventTokenUsage {
+			continue
+		}
+		if ev.Data.Model != "gpt-5" {
+			t.Fatalf("Model=%q want gpt-5 (explicit)", ev.Data.Model)
+		}
+		if ev.Data.IsFallbackModel {
+			t.Fatalf("IsFallbackModel=true; want false when log explicitly says gpt-5")
+		}
+		return
+	}
+	t.Fatal("no token event emitted")
+}
+
+// TestCodexWatcher_EventMsgMissingModelSetsFallbackFlag pins the same
+// fallback flag on the event_msg/token_count path (ccusage parser.rs:170):
+// no model context yields ("gpt-5", IsFallbackModel=true).
+func TestCodexWatcher_EventMsgMissingModelSetsFallbackFlag(t *testing.T) {
+	entry := codexLogEntry{
+		Timestamp: "2026-01-14T12:07:16.785Z",
+		Type:      "event_msg",
+		Payload: json.RawMessage(`{
+			"type":"token_count",
+			"info":{
+				"last_token_usage":{
+					"input_tokens":100,
+					"output_tokens":30,
+					"total_tokens":130
+				}
+			}
+		}`),
+	}
+
+	// Both context model AND usage.info.model are empty → fallback.
+	events := parseCodexEntryWithContext(entry, "session-1", "", "")
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Data.Model != "gpt-5" {
+		t.Fatalf("Model=%q want gpt-5", events[0].Data.Model)
+	}
+	if !events[0].Data.IsFallbackModel {
+		t.Fatalf("IsFallbackModel=false want true (residual #3)")
+	}
+}
+
 // TestCodexWatcher_SavedExecPreservesReasoningOutputTokensField pins
 // the same residual-#2 parity for parseCodexExecEntry's saved/headless
 // exec path. tokenUsage() folds reasoning into output and drops the

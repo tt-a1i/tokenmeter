@@ -911,7 +911,7 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 		}
 
 		if msg.Type == "token_count" && msg.Info != nil {
-			eventModel := codexEventModel(model, msg.Info.Model)
+			eventModel, isFallback := codexEventModel(model, msg.Info.Model)
 			usage := msg.Info.LastTokenUsage
 			if usage.TotalTokens == 0 {
 				return nil
@@ -940,6 +940,7 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 					CacheReadTokens:       usage.CachedInputTokens,
 					ReasoningOutputTokens: usage.ReasoningOutputTokens,
 					Model:                 eventModel,
+					IsFallbackModel:       isFallback,
 					CWD:                   cwd,
 					CostUSD:               cost,
 				},
@@ -959,7 +960,7 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 	if json.Unmarshal(entry.Payload, &msg) != nil || msg.Type != "token_count" || msg.Info == nil || msg.Info.TotalTokenUsage == nil {
 		return parseCodexEntryWithContext(entry, sessionID, model, cwd)
 	}
-	eventModel := codexEventModel(model, msg.Info.Model)
+	eventModel, isFallback := codexEventModel(model, msg.Info.Model)
 
 	if msg.Info.LastTokenUsage.TotalTokens != 0 {
 		if previousTotal != nil && msg.Info.TotalTokenUsage.TotalTokens != 0 {
@@ -1005,6 +1006,7 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 			CacheReadTokens:       usage.CachedInputTokens,
 			ReasoningOutputTokens: usage.ReasoningOutputTokens,
 			Model:                 eventModel,
+			IsFallbackModel:       isFallback,
 			CWD:                   cwd,
 			CostUSD:               cost,
 		},
@@ -1036,14 +1038,18 @@ func normalizeCodexTokenUsage(usage codexTokenUsage) codexTokenUsage {
 	return usage
 }
 
-func codexEventModel(currentModel, usageModel string) string {
+// codexEventModel returns the resolved model name for a Codex token
+// event and a flag indicating whether the value is the defaulted
+// "gpt-5" fallback (mirrors ccusage parser.rs:170 / :260 setting
+// is_fallback_model when the source log did not record a model).
+func codexEventModel(currentModel, usageModel string) (string, bool) {
 	if usageModel != "" {
-		return usageModel
+		return usageModel, false
 	}
 	if currentModel != "" {
-		return currentModel
+		return currentModel, false
 	}
-	return "gpt-5"
+	return "gpt-5", true
 }
 
 func codexUsageEmpty(usage codexTokenUsage) bool {
@@ -1099,8 +1105,13 @@ func parseCodexExecEntry(entry codexLogEntry, sessionID, model, cwd string) []ev
 	if data.Model == "" {
 		data.Model = model
 	}
+	// Track whether we synthesized "gpt-5" because no source-of-truth
+	// model column existed (ccusage parser.rs:260 sets is_fallback_model
+	// at the same chain endpoint).
+	isFallbackModel := false
 	if data.Model == "" {
 		data.Model = "gpt-5"
+		isFallbackModel = true
 	}
 	if data.Usage == nil {
 		return nil
@@ -1130,6 +1141,7 @@ func parseCodexExecEntry(entry codexLogEntry, sessionID, model, cwd string) []ev
 			CacheReadTokens:       usage.CachedInputTokens,
 			ReasoningOutputTokens: reasoning,
 			Model:                 data.Model,
+			IsFallbackModel:       isFallbackModel,
 			CWD:                   cwd,
 			CostUSD:               cost,
 		},
