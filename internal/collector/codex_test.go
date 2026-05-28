@@ -209,6 +209,105 @@ func TestCodexWatcher_EventMsgPreservesReasoningOutputTokensField(t *testing.T) 
 	}
 }
 
+// TestCodexWatcher_SourceIDDifferentiatesReasoningTokens pins ccusage
+// loader.rs:113 parity: two token events whose (timestamp, model,
+// input, output_folded, cached) tuple is identical but whose raw
+// reasoning_output_tokens differ must produce distinct source_ids so
+// the storage layer's UNIQUE source_id index does not collapse them
+// into one row. Cost stays equal (reasoning folds into OutputTokens
+// at the same output rate), but the dedupe key has to keep them apart.
+func TestCodexWatcher_SourceIDDifferentiatesReasoningTokens(t *testing.T) {
+	// Two log entries: same timestamp, same input/cached/total_after_fold,
+	// but reasoning differs (3 vs 7) so the raw output side differs (34
+	// vs 30). Critically, both fold to OutputTokens=37, so the *folded*
+	// tuple alone cannot distinguish them — reasoning has to be in the
+	// source_id formula.
+	entryA := codexLogEntry{
+		Timestamp: "2026-01-14T12:07:16.785Z",
+		Type:      "event_msg",
+		Payload: json.RawMessage(`{
+			"type":"token_count",
+			"info":{
+				"last_token_usage":{
+					"input_tokens":100,
+					"output_tokens":34,
+					"reasoning_output_tokens":3,
+					"total_tokens":137
+				}
+			}
+		}`),
+	}
+	entryB := codexLogEntry{
+		Timestamp: "2026-01-14T12:07:16.785Z",
+		Type:      "event_msg",
+		Payload: json.RawMessage(`{
+			"type":"token_count",
+			"info":{
+				"last_token_usage":{
+					"input_tokens":100,
+					"output_tokens":30,
+					"reasoning_output_tokens":7,
+					"total_tokens":137
+				}
+			}
+		}`),
+	}
+
+	a := parseCodexEntryWithContext(entryA, "session-1", "gpt-5", "")
+	b := parseCodexEntryWithContext(entryB, "session-1", "gpt-5", "")
+	if len(a) != 1 || len(b) != 1 {
+		t.Fatalf("expected 1 event each; got %d / %d", len(a), len(b))
+	}
+	if a[0].Data.OutputTokens != b[0].Data.OutputTokens {
+		t.Fatalf("OutputTokens fold should match (%d vs %d) — the test premise is invalid otherwise",
+			a[0].Data.OutputTokens, b[0].Data.OutputTokens)
+	}
+	if a[0].ID == b[0].ID {
+		t.Fatalf("source_id collision: both = %q; reasoning must differentiate the tuple", a[0].ID)
+	}
+	if a[0].Data.ReasoningOutputTokens == b[0].Data.ReasoningOutputTokens {
+		t.Fatalf("test fixture broken: reasoning values were equal (%d)", a[0].Data.ReasoningOutputTokens)
+	}
+}
+
+// TestCodexWatcher_SavedExecSourceIDDifferentiatesReasoningTokens does
+// the same on the saved/headless exec path, where the source_id is
+// "codex-exec-..." rather than "codex-tokens-...".
+func TestCodexWatcher_SavedExecSourceIDDifferentiatesReasoningTokens(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "savedexec-reasoning-dedupe-1111-1111-111111111111"
+	path := filepath.Join(dir, "run-"+sessionID+".jsonl")
+	writeLinesToFile(t, path,
+		`{"type":"turn.completed","timestamp":"2026-01-02T03:04:05.000Z","model":"gpt-5","usage":{"input_tokens":100,"output_tokens":34,"reasoning_output_tokens":3,"total_tokens":137}}`,
+		`{"type":"turn.completed","timestamp":"2026-01-02T03:04:05.000Z","model":"gpt-5","usage":{"input_tokens":100,"output_tokens":30,"reasoning_output_tokens":7,"total_tokens":137}}`,
+	)
+
+	var emitted []event.Event
+	w := NewCodexWatcher(func(ev event.Event) { emitted = append(emitted, ev) })
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	w.processFile(path, info.Size())
+
+	var tokenEvents []event.Event
+	for _, ev := range emitted {
+		if ev.Type == event.EventTokenUsage {
+			tokenEvents = append(tokenEvents, ev)
+		}
+	}
+	if len(tokenEvents) != 2 {
+		t.Fatalf("expected 2 token events, got %d", len(tokenEvents))
+	}
+	if tokenEvents[0].ID == tokenEvents[1].ID {
+		t.Fatalf("saved-exec source_id collision: both = %q; reasoning must differentiate", tokenEvents[0].ID)
+	}
+	if tokenEvents[0].Data.OutputTokens != tokenEvents[1].Data.OutputTokens {
+		t.Fatalf("OutputTokens fold differed (%d vs %d) — test premise broken",
+			tokenEvents[0].Data.OutputTokens, tokenEvents[1].Data.OutputTokens)
+	}
+}
+
 // TestCodexWatcher_SavedExecMissingModelSetsFallbackFlag pins ccusage
 // residual-#3 parity (parser.rs:260): when neither the entry's own
 // model column nor a runtime sessionModel is available, the saved-exec

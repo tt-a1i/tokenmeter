@@ -921,10 +921,15 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 			// surface the raw count on EventData independently — ccusage
 			// parser.rs:182 keeps it as a separate CodexRawUsage field.
 			usage = normalizeCodexTokenUsage(usage)
-			sourceID := fmt.Sprintf("codex-tokens-%s-%d-%d-%d-%d", sessionID, ts.UnixNano(), usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens)
+			// Include reasoning in the source_id tuple so two rows whose
+			// folded OutputTokens happen to coincide but whose raw
+			// reasoning differs are not collapsed by the storage layer's
+			// unique source_id index (ccusage loader.rs:113 dedupes on a
+			// tuple that also names reasoning_output_tokens).
+			sourceID := fmt.Sprintf("codex-tokens-%s-%d-%d-%d-%d-%d", sessionID, ts.UnixNano(), usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, usage.ReasoningOutputTokens)
 			if msg.Info.TotalTokenUsage != nil && msg.Info.TotalTokenUsage.TotalTokens != 0 {
 				total := normalizeCodexTokenUsage(*msg.Info.TotalTokenUsage)
-				sourceID = fmt.Sprintf("codex-tokens-%s-total-%d-%d-%d-%d", sessionID, total.InputTokens, total.OutputTokens, total.CachedInputTokens, total.TotalTokens)
+				sourceID = fmt.Sprintf("codex-tokens-%s-total-%d-%d-%d-%d-%d", sessionID, total.InputTokens, total.OutputTokens, total.CachedInputTokens, total.TotalTokens, total.ReasoningOutputTokens)
 			}
 			cost := 0.0
 			cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, eventModel)
@@ -995,7 +1000,7 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 	cost := 0.0
 	cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, eventModel)
 	return []event.Event{{
-		ID:        fmt.Sprintf("codex-tokens-total-%d-%s-%d-%d-%d-%d", ts.UnixNano(), eventModel, current.InputTokens, normalizeCodexTokenUsage(current).OutputTokens, current.CachedInputTokens, current.TotalTokens),
+		ID:        fmt.Sprintf("codex-tokens-total-%d-%s-%d-%d-%d-%d-%d", ts.UnixNano(), eventModel, current.InputTokens, normalizeCodexTokenUsage(current).OutputTokens, current.CachedInputTokens, current.TotalTokens, current.ReasoningOutputTokens),
 		Type:      event.EventTokenUsage,
 		SessionID: sessionID,
 		Platform:  event.PlatformCodex,
@@ -1130,7 +1135,7 @@ func parseCodexExecEntry(entry codexLogEntry, sessionID, model, cwd string) []ev
 		cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, data.Model)
 	}
 	return []event.Event{{
-		ID:        fmt.Sprintf("codex-exec-%s-%d-%d-%d-%d", sessionID, ts.UnixNano(), usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens),
+		ID:        fmt.Sprintf("codex-exec-%s-%d-%d-%d-%d-%d", sessionID, ts.UnixNano(), usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, reasoning),
 		Type:      event.EventTokenUsage,
 		SessionID: sessionID,
 		Platform:  event.PlatformCodex,
