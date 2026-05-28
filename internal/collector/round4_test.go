@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -391,6 +392,27 @@ func TestClaudeLogWatcherReplacesWithStrictlyBetterAcrossPasses(t *testing.T) {
 	}
 	if len(deleted) != 1 || deleted[0] != "claude-tokens-sidechain-s-msg-stale-side-req" {
 		t.Fatalf("deleteFn calls = %#v, want old sidechain source_id", deleted)
+	}
+	sess, found, err := db.GetSessionByIDPrefix(sessionID)
+	if err != nil || !found {
+		t.Fatalf("get session: found=%v err=%v", found, err)
+	}
+	wantRow := rows[0]
+	if sess.TotalInputTokens != int(wantRow.InputTokens) || sess.TotalOutputTokens != int(wantRow.OutputTokens) ||
+		sess.TotalCacheCreationTokens != int(wantRow.CacheCreationInputTokens) ||
+		sess.TotalCacheReadTokens != int(wantRow.CacheReadInputTokens) ||
+		math.Abs(sess.TotalCostUSD-wantRow.CostUSD) > 1e-9 {
+		t.Fatalf("session totals = input %d output %d cacheCreate %d cacheRead %d cost %.12f, want row %#v",
+			sess.TotalInputTokens, sess.TotalOutputTokens, sess.TotalCacheCreationTokens, sess.TotalCacheReadTokens, sess.TotalCostUSD, wantRow)
+	}
+	rowDay := wantRow.Timestamp.Local()
+	dayStart := time.Date(rowDay.Year(), rowDay.Month(), rowDay.Day(), 0, 0, 0, 0, time.Local)
+	dayCost, err := db.GetCostBetween(dayStart, dayStart.AddDate(0, 0, 1))
+	if err != nil {
+		t.Fatalf("get daily cost: %v", err)
+	}
+	if math.Abs(dayCost-wantRow.CostUSD) > 1e-9 {
+		t.Fatalf("daily cost = %.12f, want replacement row cost %.12f", dayCost, wantRow.CostUSD)
 	}
 }
 
