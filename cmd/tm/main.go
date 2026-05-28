@@ -386,7 +386,9 @@ func runDaemon() {
 	// Start Claude log watcher
 	claudeLogWatcher := collector.NewClaudeLogWatcher(func(ev event.Event) {
 		d.ProcessExternalEventAsync(ev)
-	})
+	}, collector.WithClaudeTokenUsageDeleteFunc(func(sourceID string) error {
+		return db.DeleteTokenUsageBySourceID(context.Background(), sourceID)
+	}))
 	claudeLogWatcher.Start()
 	defer claudeLogWatcher.Stop()
 
@@ -771,7 +773,9 @@ func runWeb() error {
 			// Start Claude log watcher
 			claudeLogWatcher := collector.NewClaudeLogWatcher(func(ev event.Event) {
 				d.ProcessExternalEventAsync(ev)
-			})
+			}, collector.WithClaudeTokenUsageDeleteFunc(func(sourceID string) error {
+				return db.DeleteTokenUsageBySourceID(context.Background(), sourceID)
+			}))
 			claudeLogWatcher.Start()
 			defer claudeLogWatcher.Stop()
 

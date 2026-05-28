@@ -29,22 +29,38 @@ type ClaudeLogWatcher struct {
 	seen             map[string]int64  // file path -> last committed byte offset
 	sessionGitBranch map[string]string // session_id -> git_branch
 	tokenDeduper     *claudeTokenDeduper
+	deleteTokenUsage func(sourceID string) error
 	initialScanDone  bool
 	tickInterval     time.Duration
 	scanFn           func()
 }
 
-func NewClaudeLogWatcher(emitFn func(event.Event)) *ClaudeLogWatcher {
+type ClaudeLogWatcherOption func(*ClaudeLogWatcher)
+
+func WithClaudeTokenUsageDeleteFunc(fn func(sourceID string) error) ClaudeLogWatcherOption {
+	return func(w *ClaudeLogWatcher) {
+		w.deleteTokenUsage = fn
+		if w.tokenDeduper != nil {
+			w.tokenDeduper.deleteFn = fn
+		}
+	}
+}
+
+func NewClaudeLogWatcher(emitFn func(event.Event), opts ...ClaudeLogWatcherOption) *ClaudeLogWatcher {
 	home, _ := os.UserHomeDir()
-	return &ClaudeLogWatcher{
+	w := &ClaudeLogWatcher{
 		baseDir:          filepath.Join(home, ".claude", "projects"),
 		emitFn:           emitFn,
 		done:             make(chan struct{}),
 		seen:             make(map[string]int64),
 		sessionGitBranch: make(map[string]string),
-		tokenDeduper:     newClaudeTokenDeduper(),
 		tickInterval:     3 * time.Second,
 	}
+	w.tokenDeduper = newClaudeTokenDeduper(nil)
+	for _, opt := range opts {
+		opt(w)
+	}
+	return w
 }
 
 func (w *ClaudeLogWatcher) Start() {
@@ -252,7 +268,7 @@ func processClaudeFileCollect(path, sessionID string, startOffset int64, prevGit
 
 	reader := bufio.NewReaderSize(f, 1024*1024)
 	committedOffset := startOffset
-	deduper := newClaudeTokenDeduper()
+	deduper := newClaudeTokenDeduper(nil)
 	linesRead := 0
 
 	for {
@@ -295,18 +311,22 @@ func processClaudeFileCollect(path, sessionID string, startOffset int64, prevGit
 }
 
 type claudeTokenDeduper struct {
-	byUUID map[string]int
-	rows   []claudeTokenDedupeRow
+	byUUID   map[string]claudeTokenDedupeRow
+	deleteFn func(sourceID string) error
 }
 
 type claudeTokenDedupeRow struct {
+	sourceID  string
 	sidechain bool
 	score     int
 	cost      float64
 }
 
-func newClaudeTokenDeduper() *claudeTokenDeduper {
-	return &claudeTokenDeduper{byUUID: make(map[string]int)}
+func newClaudeTokenDeduper(deleteFn func(sourceID string) error) *claudeTokenDeduper {
+	return &claudeTokenDeduper{
+		byUUID:   make(map[string]claudeTokenDedupeRow),
+		deleteFn: deleteFn,
+	}
 }
 
 func (d *claudeTokenDeduper) append(events []event.Event, entry claudeLogEntry, ev event.Event) []event.Event {
@@ -314,36 +334,45 @@ func (d *claudeTokenDeduper) append(events []event.Event, entry claudeLogEntry, 
 		return append(events, ev)
 	}
 	candidate := claudeTokenDedupeRow{
+		sourceID:  ev.ID,
 		sidechain: entry.IsSidechain,
 		// EventData.InputTokens already includes cache creation/read tokens for
 		// Claude, so input + output matches ccusage's raw+cache+output total.
 		score: ev.Data.InputTokens + ev.Data.OutputTokens,
 		cost:  ev.Data.CostUSD,
 	}
-	if idx, ok := d.byUUID[entry.UUID]; ok {
-		// A watcher-scoped deduper can remember UUIDs from an earlier
-		// processFile pass, but the index points at that pass's bufferedEvents
-		// slice. The current pass starts with a fresh slice, so stale indices
-		// fall back to first-wins for streaming replay instead of replacing.
-		if idx >= len(events) {
-			return events
-		}
-		if !candidate.sidechain && !d.rows[idx].sidechain {
-			if claudeTokenDedupePrefers(candidate, d.rows[idx]) {
-				d.byUUID[entry.UUID] = len(events)
+	if existing, ok := d.byUUID[entry.UUID]; ok {
+		if !candidate.sidechain && !existing.sidechain {
+			if claudeTokenDedupePrefers(candidate, existing) {
+				d.byUUID[entry.UUID] = candidate
 			}
-			d.rows = append(d.rows, candidate)
 			return append(events, ev)
 		}
-		if claudeTokenDedupePrefers(candidate, d.rows[idx]) {
-			events[idx] = ev
-			d.rows[idx] = candidate
+		if claudeTokenDedupePrefers(candidate, existing) {
+			var removed bool
+			events, removed = removeClaudeTokenEventBySourceID(events, existing.sourceID)
+			if !removed && d.deleteFn != nil {
+				if err := d.deleteFn(existing.sourceID); err != nil {
+					log.Printf("claude watcher: delete stale token usage %s: %v", existing.sourceID, err)
+				}
+			}
+			d.byUUID[entry.UUID] = candidate
+			return append(events, ev)
 		}
 		return events
 	}
-	d.byUUID[entry.UUID] = len(events)
-	d.rows = append(d.rows, candidate)
+	d.byUUID[entry.UUID] = candidate
 	return append(events, ev)
+}
+
+func removeClaudeTokenEventBySourceID(events []event.Event, sourceID string) ([]event.Event, bool) {
+	for i := range events {
+		if events[i].ID == sourceID {
+			copy(events[i:], events[i+1:])
+			return events[:len(events)-1], true
+		}
+	}
+	return events, false
 }
 
 func claudeTokenDedupePrefers(candidate, existing claudeTokenDedupeRow) bool {
@@ -466,7 +495,7 @@ func (w *ClaudeLogWatcher) processFile(path, sessionID string) {
 	reader := bufio.NewReaderSize(f, 1024*1024)
 	committedOffset := offset
 	if w.tokenDeduper == nil {
-		w.tokenDeduper = newClaudeTokenDeduper()
+		w.tokenDeduper = newClaudeTokenDeduper(w.deleteTokenUsage)
 	}
 	var bufferedEvents []event.Event
 	linesRead := 0

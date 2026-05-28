@@ -287,6 +287,7 @@ func TestClaudeLogWatcherDedupesSidechainReplayAcrossProcessFileCalls(t *testing
 		t.Fatalf("write original: %v", err)
 	}
 
+	var deleted []string
 	w := NewClaudeLogWatcher(func(ev event.Event) {
 		if ev.Type != event.EventTokenUsage {
 			return
@@ -297,7 +298,10 @@ func TestClaudeLogWatcherDedupesSidechainReplayAcrossProcessFileCalls(t *testing
 		if err := db.InsertTokenUsageBatch([]event.Event{ev}); err != nil {
 			t.Fatalf("insert token usage: %v", err)
 		}
-	})
+	}, WithClaudeTokenUsageDeleteFunc(func(sourceID string) error {
+		deleted = append(deleted, sourceID)
+		return db.DeleteTokenUsageBySourceID(context.Background(), sourceID)
+	}))
 	w.processFile(path, sessionID)
 
 	sidechain := `{"type":"assistant","sessionId":"s","uuid":"msg-stream","requestId":"side-req","isSidechain":true,"timestamp":"2026-01-14T12:07:11Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}}` + "\n"
@@ -324,9 +328,12 @@ func TestClaudeLogWatcherDedupesSidechainReplayAcrossProcessFileCalls(t *testing
 	if rows[0].SourceID != "claude-tokens-s-msg-stream-main-req" {
 		t.Fatalf("kept source_id = %q, want original non-sidechain", rows[0].SourceID)
 	}
+	if len(deleted) != 0 {
+		t.Fatalf("deleteFn calls = %#v, want none for non-preferred sidechain replay", deleted)
+	}
 }
 
-func TestClaudeLogWatcherSkipsBetterReplayWithStaleCrossPassIndex(t *testing.T) {
+func TestClaudeLogWatcherReplacesWithStrictlyBetterAcrossPasses(t *testing.T) {
 	dir := t.TempDir()
 	db, err := storage.Open(filepath.Join(dir, "usage.db"))
 	if err != nil {
@@ -341,6 +348,7 @@ func TestClaudeLogWatcherSkipsBetterReplayWithStaleCrossPassIndex(t *testing.T) 
 		t.Fatalf("write sidechain: %v", err)
 	}
 
+	var deleted []string
 	w := NewClaudeLogWatcher(func(ev event.Event) {
 		if ev.Type != event.EventTokenUsage {
 			return
@@ -351,7 +359,10 @@ func TestClaudeLogWatcherSkipsBetterReplayWithStaleCrossPassIndex(t *testing.T) 
 		if err := db.InsertTokenUsageBatch([]event.Event{ev}); err != nil {
 			t.Fatalf("insert token usage: %v", err)
 		}
-	})
+	}, WithClaudeTokenUsageDeleteFunc(func(sourceID string) error {
+		deleted = append(deleted, sourceID)
+		return db.DeleteTokenUsageBySourceID(context.Background(), sourceID)
+	}))
 	w.processFile(path, sessionID)
 
 	nonSidechainLater := `{"type":"assistant","sessionId":"s","uuid":"msg-stale","requestId":"main-req","isSidechain":false,"timestamp":"2026-01-14T12:07:11Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50}}}` + "\n"
@@ -375,8 +386,11 @@ func TestClaudeLogWatcherSkipsBetterReplayWithStaleCrossPassIndex(t *testing.T) 
 	if len(rows) != 1 {
 		t.Fatalf("storage rows = %d, want 1: %#v", len(rows), rows)
 	}
-	if rows[0].SourceID != "claude-tokens-sidechain-s-msg-stale-side-req" {
-		t.Fatalf("kept source_id = %q, want first sidechain row", rows[0].SourceID)
+	if rows[0].SourceID != "claude-tokens-s-msg-stale-main-req" {
+		t.Fatalf("kept source_id = %q, want replacement non-sidechain row", rows[0].SourceID)
+	}
+	if len(deleted) != 1 || deleted[0] != "claude-tokens-sidechain-s-msg-stale-side-req" {
+		t.Fatalf("deleteFn calls = %#v, want old sidechain source_id", deleted)
 	}
 }
 
