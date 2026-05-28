@@ -200,7 +200,77 @@ func (m *Map) Resolve(model string) (Pricing, bool) {
 			return p, true
 		}
 	}
-	return Pricing{}, false
+
+	// Fallback: bidirectional boundary-aware contains scan, mirroring
+	// ccusage's pricing_key_matches (rust/crates/ccusage/src/pricing.rs:577-602).
+	// Lets a user-facing short alias like "claude-sonnet-4" land on the
+	// longer canonical "claude-sonnet-4-6" entry without enumerating every
+	// possible version suffix in the candidate set. Length-then-lex
+	// tie-breaking picks the most specific entry on the rare case where
+	// multiple keys contain the input.
+	return m.bidirectionalContainsMatch(model, normalizer)
+}
+
+// bidirectionalContainsMatch is the O(N) fallback for Resolve. Returns
+// the pricing of the longest entry key whose normalized form contains
+// the normalized input as a boundary-aware substring, or vice versa.
+// Both sides are lowercased so the matcher is robust to occasional
+// upper-case model strings without forcing the snapshot to be lowercase.
+func (m *Map) bidirectionalContainsMatch(model string, normalizer *strings.Replacer) (Pricing, bool) {
+	inputNorm := strings.ToLower(normalizer.Replace(model))
+	if inputNorm == "" {
+		return Pricing{}, false
+	}
+	var bestKey string
+	for key := range m.entries {
+		keyNorm := strings.ToLower(normalizer.Replace(key))
+		if keyNorm == "" {
+			continue
+		}
+		if !containsWithBoundary(keyNorm, inputNorm) && !containsWithBoundary(inputNorm, keyNorm) {
+			continue
+		}
+		if len(key) > len(bestKey) || (len(key) == len(bestKey) && key > bestKey) {
+			bestKey = key
+		}
+	}
+	if bestKey == "" {
+		return Pricing{}, false
+	}
+	return m.entries[bestKey], true
+}
+
+// containsWithBoundary reports whether needle occurs in haystack with
+// both sides bounded by either the string edge or a non-alphanumeric
+// byte. This is the boundary semantics from ccusage's
+// is_pricing_key_boundary / contains_pricing_key in
+// rust/crates/ccusage/src/pricing.rs:587-601: alphanumerics adjacent to
+// the match are not boundaries, so "sonnet-4" does not match into
+// "sonnet-4-5" without an explicit separator before the 4 (it does, the
+// "-" before 4 is the boundary), but "claude" alone won't bleed into
+// "claudex-…" if such a key existed.
+func containsWithBoundary(haystack, needle string) bool {
+	if needle == "" || len(needle) > len(haystack) {
+		return false
+	}
+	for start := 0; ; {
+		idx := strings.Index(haystack[start:], needle)
+		if idx < 0 {
+			return false
+		}
+		idx += start
+		beforeOK := idx == 0 || !isPricingKeyAlnum(haystack[idx-1])
+		end := idx + len(needle)
+		afterOK := end == len(haystack) || !isPricingKeyAlnum(haystack[end])
+		if beforeOK && afterOK {
+			return true
+		}
+		start = idx + 1
+	}
+}
+
+func isPricingKeyAlnum(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
 type liteLLMEntry struct {

@@ -99,6 +99,71 @@ func TestResolveNormalizesDotAndAtSeparators(t *testing.T) {
 	}
 }
 
+// TestResolveBidirectionalContainsMatch pins ccusage's
+// pricing_key_matches semantics (rust/crates/ccusage/src/pricing.rs:577-602):
+// when no candidate lookup hits, the resolver scans every entry and
+// matches on bidirectional boundary-aware substring containment
+// (haystack contains needle, or vice versa), so a partial user-facing
+// name like "claude-sonnet-4" still lands on the longer canonical
+// "claude-sonnet-4-6" entry. The boundary check rejects spurious
+// overlaps where the surrounding character is alphanumeric (digit-vs-
+// digit version bumps like "sonnet-4-7" must NOT shadow "claude-sonnet-4-6").
+//
+// The test uses a freshly-seeded *pricing.Map (not LoadEmbedded) so the
+// scan space stays small and predictable; the embedded snapshot already
+// has many "claude-sonnet-4-*" variants that would obscure the
+// longest-match selection.
+func TestResolveBidirectionalContainsMatch(t *testing.T) {
+	m := &pricing.Map{}
+	if err := m.LoadJSON([]byte(`{
+        "claude-sonnet-4-6": {"input_cost_per_token": "0.000003"},
+        "claude-haiku-4-5": {"input_cost_per_token": "0.000001"},
+        "unrelated-model":  {"input_cost_per_token": "0.000009"}
+    }`)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	hit := func(t *testing.T, in, wantKey string) {
+		t.Helper()
+		got, ok := m.Resolve(in)
+		if !ok {
+			t.Errorf("Resolve(%q) = (_, false); want hit on %q", in, wantKey)
+			return
+		}
+		want, _ := m.Lookup(wantKey)
+		if got != want {
+			t.Errorf("Resolve(%q) = %+v; want pricing of %q = %+v", in, got, wantKey, want)
+		}
+	}
+	miss := func(t *testing.T, in string) {
+		t.Helper()
+		if p, ok := m.Resolve(in); ok {
+			t.Errorf("Resolve(%q) = (%+v, true); want miss", in, p)
+		}
+	}
+
+	t.Run("input shorter than entry resolves via entry-contains-input", func(t *testing.T) {
+		hit(t, "claude-sonnet-4", "claude-sonnet-4-6")
+		hit(t, "claude-sonnet", "claude-sonnet-4-6")
+		hit(t, "claude-haiku", "claude-haiku-4-5")
+	})
+	t.Run("exact match still wins", func(t *testing.T) {
+		hit(t, "claude-sonnet-4-6", "claude-sonnet-4-6")
+		hit(t, "claude-haiku-4-5", "claude-haiku-4-5")
+	})
+	t.Run("boundary-violating overlap does not match", func(t *testing.T) {
+		// "sonnet-4-7" is not a substring of any seeded entry and no
+		// entry is a substring of "sonnet-4-7", so neither direction
+		// of the bidirectional contains rule produces a hit. Critically,
+		// the trailing -7 must not be quietly lumped onto "claude-sonnet-4-6"
+		// — version-suffix mismatches must surface as a real miss.
+		miss(t, "sonnet-4-7")
+	})
+	t.Run("unrelated model misses", func(t *testing.T) {
+		miss(t, "totally-different-vendor")
+	})
+}
+
 // TestResolveBedrockFormStillWorks pins that the normalization changes
 // do not break existing Bedrock-style resolution. "us.anthropic.claude-…"
 // keys exist verbatim in the snapshot with region-specific rates, so the
