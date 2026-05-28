@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -268,6 +269,60 @@ func TestParseClaudeFileEventsKeepsSameUUIDNonSidechainRequests(t *testing.T) {
 	}
 	if got[0].ID == got[1].ID {
 		t.Fatalf("non-sidechain requests should have distinct source IDs, both got %q", got[0].ID)
+	}
+}
+
+func TestClaudeLogWatcherDedupesSidechainReplayAcrossProcessFileCalls(t *testing.T) {
+	dir := t.TempDir()
+	db, err := storage.Open(filepath.Join(dir, "usage.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	const sessionID = "s"
+	path := filepath.Join(dir, sessionID+".jsonl")
+	original := `{"type":"assistant","sessionId":"s","uuid":"msg-stream","requestId":"main-req","isSidechain":false,"timestamp":"2026-01-14T12:07:10Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50}}}` + "\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatalf("write original: %v", err)
+	}
+
+	w := NewClaudeLogWatcher(func(ev event.Event) {
+		if ev.Type != event.EventTokenUsage {
+			return
+		}
+		if err := db.UpsertSession(ev.SessionID, ev.Platform, ev.Timestamp); err != nil {
+			t.Fatalf("upsert session: %v", err)
+		}
+		if err := db.InsertTokenUsageBatch([]event.Event{ev}); err != nil {
+			t.Fatalf("insert token usage: %v", err)
+		}
+	})
+	w.processFile(path, sessionID)
+
+	sidechain := `{"type":"assistant","sessionId":"s","uuid":"msg-stream","requestId":"side-req","isSidechain":true,"timestamp":"2026-01-14T12:07:11Z","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}}` + "\n"
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("open append: %v", err)
+	}
+	if _, err := f.WriteString(sidechain); err != nil {
+		_ = f.Close()
+		t.Fatalf("append sidechain: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close append: %v", err)
+	}
+	w.processFile(path, sessionID)
+
+	rows, err := db.ListUsageForBlocks(context.Background(), time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("list usage: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("storage rows = %d, want 1: %#v", len(rows), rows)
+	}
+	if rows[0].SourceID != "claude-tokens-s-msg-stream-main-req" {
+		t.Fatalf("kept source_id = %q, want original non-sidechain", rows[0].SourceID)
 	}
 }
 

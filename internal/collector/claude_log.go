@@ -28,6 +28,7 @@ type ClaudeLogWatcher struct {
 	loopWG           sync.WaitGroup
 	seen             map[string]int64  // file path -> last committed byte offset
 	sessionGitBranch map[string]string // session_id -> git_branch
+	tokenDeduper     *claudeTokenDeduper
 	initialScanDone  bool
 	tickInterval     time.Duration
 	scanFn           func()
@@ -41,6 +42,7 @@ func NewClaudeLogWatcher(emitFn func(event.Event)) *ClaudeLogWatcher {
 		done:             make(chan struct{}),
 		seen:             make(map[string]int64),
 		sessionGitBranch: make(map[string]string),
+		tokenDeduper:     newClaudeTokenDeduper(),
 		tickInterval:     3 * time.Second,
 	}
 }
@@ -454,7 +456,9 @@ func (w *ClaudeLogWatcher) processFile(path, sessionID string) {
 
 	reader := bufio.NewReaderSize(f, 1024*1024)
 	committedOffset := offset
-	deduper := newClaudeTokenDeduper()
+	if w.tokenDeduper == nil {
+		w.tokenDeduper = newClaudeTokenDeduper()
+	}
 	var bufferedEvents []event.Event
 	linesRead := 0
 
@@ -481,7 +485,7 @@ func (w *ClaudeLogWatcher) processFile(path, sessionID string) {
 						w.sessionGitBranch[sessionID] = newBranch
 					}
 					if ok {
-						bufferedEvents = deduper.append(bufferedEvents, entry, ev)
+						bufferedEvents = w.tokenDeduper.append(bufferedEvents, entry, ev)
 					}
 				}
 			}
