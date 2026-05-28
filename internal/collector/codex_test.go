@@ -336,6 +336,59 @@ func TestCodexWatcher_LoadsSavedExecJSONUsage(t *testing.T) {
 	}
 }
 
+func TestCodexWatcher_DedupesCopiedBranchHistoryFromTotalUsage(t *testing.T) {
+	dir := t.TempDir()
+	parentID := "parent11-1111-1111-1111-111111111111"
+	branchID := "branch22-2222-2222-2222-222222222222"
+	parentPath := filepath.Join(dir, "rollout-2026-05-12T08-00-00-"+parentID+".jsonl")
+	branchPath := filepath.Join(dir, "rollout-2026-05-12T08-02-00-"+branchID+".jsonl")
+	parentHistory := []string{
+		`{"timestamp":"2026-05-12T08:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2-codex"}}`,
+		`{"timestamp":"2026-05-12T08:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"total_tokens":1200}}}}`,
+	}
+	writeLinesToFile(t, parentPath, parentHistory...)
+	writeLinesToFile(t, branchPath, append(parentHistory,
+		`{"timestamp":"2026-05-12T08:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":300,"output_tokens":450,"total_tokens":2050}}}}`,
+	)...)
+
+	var emitted []event.Event
+	w := NewCodexWatcher(func(ev event.Event) { emitted = append(emitted, ev) })
+	for _, path := range []string{parentPath, branchPath} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		w.processFile(path, info.Size())
+	}
+
+	seen := map[string]event.Event{}
+	for _, ev := range emitted {
+		if ev.Type == event.EventTokenUsage {
+			if _, exists := seen[ev.ID]; exists {
+				continue
+			}
+			seen[ev.ID] = ev
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("copied parent history should collapse to 2 unique token events, got %d: %#v", len(seen), seen)
+	}
+
+	var branchDelta event.Event
+	for _, ev := range seen {
+		if ev.SessionID == branchID {
+			branchDelta = ev
+			break
+		}
+	}
+	if branchDelta.SessionID == "" {
+		t.Fatalf("missing branch delta event in %#v", seen)
+	}
+	if branchDelta.Data.InputTokens != 600 || branchDelta.Data.CacheReadTokens != 200 || branchDelta.Data.OutputTokens != 250 {
+		t.Fatalf("branch delta tokens = input %d cache %d output %d, want 600/200/250", branchDelta.Data.InputTokens, branchDelta.Data.CacheReadTokens, branchDelta.Data.OutputTokens)
+	}
+}
+
 func TestExtractSessionID(t *testing.T) {
 	tests := []struct {
 		filename string

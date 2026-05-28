@@ -186,6 +186,11 @@ type codexFileResult struct {
 	pendingStart *event.Event // deferred SessionStart when file has no substantive data
 }
 
+type codexTotalState struct {
+	usage codexTokenUsage
+	ok    bool
+}
+
 func (w *CodexWatcher) fullDiscover() bool {
 	// Collect file jobs from all base directories.
 	var jobs []codexFileJob
@@ -320,6 +325,7 @@ func processCodexFileCollect(path string, size, startOffset int64, prevModel, pr
 	reader := bufio.NewReaderSize(f, 1024*1024)
 	committedOffset := startOffset
 	pendingFileChanges := make(map[string]codexPendingChange)
+	var previousTotal codexTotalState
 	linesRead := 0
 
 	for {
@@ -359,7 +365,7 @@ func processCodexFileCollect(path string, size, startOffset int64, prevModel, pr
 						}
 					}
 
-					result.events = append(result.events, parseCodexEntryWithContext(raw, sessionID, result.model, result.cwd)...)
+					result.events = append(result.events, parseCodexEntryWithState(raw, sessionID, result.model, result.cwd, &previousTotal)...)
 
 					ts, tsOk := parseTimestamp(raw.Timestamp)
 					if ok && payload.Type == "function_call_output" {
@@ -563,6 +569,7 @@ func (w *CodexWatcher) processFile(path string, size int64) {
 	reader := bufio.NewReaderSize(f, 1024*1024)
 	committedOffset := offset
 	var bufferedEvents []event.Event
+	var previousTotal codexTotalState
 	linesRead := 0
 
 	for {
@@ -594,7 +601,7 @@ func (w *CodexWatcher) processFile(path string, size int64) {
 						}
 					}
 
-					bufferedEvents = append(bufferedEvents, parseCodexEntryWithContext(raw, sessionID, w.sessionModels[sessionID], w.sessionCWDs[sessionID])...)
+					bufferedEvents = append(bufferedEvents, parseCodexEntryWithState(raw, sessionID, w.sessionModels[sessionID], w.sessionCWDs[sessionID], &previousTotal)...)
 
 					ts, tsOk := parseTimestamp(raw.Timestamp)
 					if ok && payload.Type == "function_call_output" {
@@ -933,6 +940,82 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 	}
 
 	return nil
+}
+
+func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string, previousTotal *codexTotalState) []event.Event {
+	if entry.Type != "event_msg" {
+		return parseCodexEntryWithContext(entry, sessionID, model, cwd)
+	}
+
+	var msg codexEventMsg
+	if json.Unmarshal(entry.Payload, &msg) != nil || msg.Type != "token_count" || msg.Info == nil || msg.Info.TotalTokenUsage == nil {
+		return parseCodexEntryWithContext(entry, sessionID, model, cwd)
+	}
+
+	if msg.Info.LastTokenUsage.TotalTokens != 0 {
+		if previousTotal != nil && msg.Info.TotalTokenUsage.TotalTokens != 0 {
+			previousTotal.usage = *msg.Info.TotalTokenUsage
+			previousTotal.ok = true
+		}
+		return parseCodexEntryWithContext(entry, sessionID, model, cwd)
+	}
+
+	ts, ok := parseTimestamp(entry.Timestamp)
+	if !ok {
+		return nil
+	}
+	current := *msg.Info.TotalTokenUsage
+	if current.TotalTokens == 0 {
+		return nil
+	}
+
+	usage := current
+	if previousTotal != nil && previousTotal.ok {
+		usage = subtractCodexUsage(current, previousTotal.usage)
+	}
+	if previousTotal != nil {
+		previousTotal.usage = current
+		previousTotal.ok = true
+	}
+	if codexUsageEmpty(usage) {
+		return nil
+	}
+
+	cost := 0.0
+	if model != "" {
+		cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, model)
+	}
+	return []event.Event{{
+		ID:        fmt.Sprintf("codex-tokens-total-%d-%s-%d-%d-%d-%d", ts.UnixNano(), model, current.InputTokens, current.OutputTokens, current.CachedInputTokens, current.TotalTokens),
+		Type:      event.EventTokenUsage,
+		SessionID: sessionID,
+		Platform:  event.PlatformCodex,
+		Timestamp: ts,
+		Data: event.EventData{
+			InputTokens:     usage.InputTokens,
+			OutputTokens:    usage.OutputTokens,
+			CacheReadTokens: usage.CachedInputTokens,
+			Model:           model,
+			CWD:             cwd,
+			CostUSD:         cost,
+		},
+	}}
+}
+
+func subtractCodexUsage(current, previous codexTokenUsage) codexTokenUsage {
+	return codexTokenUsage{
+		InputTokens:       nonNegativeDelta(current.InputTokens, previous.InputTokens),
+		OutputTokens:      nonNegativeDelta(current.OutputTokens, previous.OutputTokens),
+		TotalTokens:       nonNegativeDelta(current.TotalTokens, previous.TotalTokens),
+		CachedInputTokens: nonNegativeDelta(current.CachedInputTokens, previous.CachedInputTokens),
+	}
+}
+
+func nonNegativeDelta(current, previous int) int {
+	if current <= previous {
+		return 0
+	}
+	return current - previous
 }
 
 func codexUsageEmpty(usage codexTokenUsage) bool {
