@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/collector"
@@ -364,15 +365,18 @@ func recalculateCost(r storage.AggregateUsageRow) float64 {
 	}, speedForModel(model))
 }
 
-// parseDateFlag accepts a YYYYMMDD shared-flag value and returns a UTC
-// time.Time. An empty string maps to the zero time, meaning "no bound".
+// parseDateFlag accepts a YYYYMMDD shared-flag value (also tolerating the
+// dashed YYYY-MM-DD form, matching ccusage's normalize_date_bound in
+// rust/crates/ccusage-cli/src/types.rs:64-66) and returns a UTC time.Time.
+// An empty string maps to the zero time, meaning "no bound".
 func parseDateFlag(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
 	}
-	t, err := time.Parse("20060102", s)
+	normalized := strings.ReplaceAll(s, "-", "")
+	t, err := time.Parse("20060102", normalized)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid date %q (want YYYYMMDD): %w", s, err)
+		return time.Time{}, fmt.Errorf("invalid date %q (want YYYYMMDD or YYYY-MM-DD): %w", s, err)
 	}
 	return t, nil
 }

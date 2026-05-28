@@ -49,8 +49,8 @@ func ParseSharedForCommand(command string, args []string) (Shared, []string, err
 		return Shared{}, nil, err
 	}
 	fs := flag.NewFlagSet("shared", flag.ContinueOnError)
-	fs.StringVar(&s.Since, "since", s.Since, "start date YYYYMMDD")
-	fs.StringVar(&s.Until, "until", s.Until, "end date YYYYMMDD")
+	fs.StringVar(&s.Since, "since", s.Since, "start date YYYYMMDD or YYYY-MM-DD")
+	fs.StringVar(&s.Until, "until", s.Until, "end date YYYYMMDD or YYYY-MM-DD")
 	fs.BoolVar(&s.JSON, "json", s.JSON, "emit JSON instead of table")
 	fs.StringVar(&s.Mode, "mode", defaultString(s.Mode, "auto"), "cost mode: auto | calculate | display")
 	fs.StringVar(&s.Speed, "speed", defaultString(s.Speed, "auto"), "Codex pricing speed tier: auto | standard | fast")

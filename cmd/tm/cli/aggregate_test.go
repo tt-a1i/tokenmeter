@@ -286,6 +286,55 @@ func TestParseDateFlagUntilEmpty(t *testing.T) {
 	}
 }
 
+// G7: ccusage normalizes --since/--until by stripping '-' before parsing
+// (rust/crates/ccusage-cli/src/types.rs:64-66). Accept the dashed form so
+// `--since 2026-05-20 --until 2026-05-20` works alongside the canonical
+// YYYYMMDD form.
+func TestParseDateFlagUntilAcceptsDashedDate(t *testing.T) {
+	got, err := cli.ParseDateFlagUntil("2026-05-20")
+	if err != nil {
+		t.Fatalf("ParseDateFlagUntil(dashed): %v", err)
+	}
+	want := time.Date(2026, 5, 21, 0, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("dashed --until 2026-05-20 got %v, want %v", got, want)
+	}
+}
+
+// G7: --until still accepts YYYYMMDD after normalization (regression
+// guard for the dash-stripping change).
+func TestParseDateFlagUntilStillAcceptsCompactDate(t *testing.T) {
+	got, err := cli.ParseDateFlagUntil("20260520")
+	if err != nil {
+		t.Fatalf("ParseDateFlagUntil(compact): %v", err)
+	}
+	want := time.Date(2026, 5, 21, 0, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("compact --until 20260520 got %v, want %v", got, want)
+	}
+}
+
+// G7: RunAggregate must accept --since 2026-05-20 just like 20260520 and
+// derive the same lower/upper bounds. This proves the normalization flows
+// through the whole shared-flag path, not just the helper.
+func TestRunAggregateAcceptsDashedSinceUntil(t *testing.T) {
+	stub := &capturingLoader{}
+	if err := cli.RunAggregate(context.Background(), io.Discard, cli.AggregateArgs{
+		Shared: cli.Shared{Since: "2026-05-20", Until: "2026-05-20"},
+		Bucket: cli.BucketDaily,
+	}, stub); err != nil {
+		t.Fatalf("RunAggregate: %v", err)
+	}
+	wantSince := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
+	wantUntil := time.Date(2026, 5, 21, 0, 0, 0, 0, time.UTC)
+	if !stub.captured.Since.Equal(wantSince) {
+		t.Fatalf("Since = %v, want %v", stub.captured.Since, wantSince)
+	}
+	if !stub.captured.Until.Equal(wantUntil) {
+		t.Fatalf("Until = %v, want %v", stub.captured.Until, wantUntil)
+	}
+}
+
 func TestRunAggregateUntilPropagates(t *testing.T) {
 	// --until=20260520 must propagate to filter.Until = 2026-05-21 00:00 UTC
 	// so the SQL filter includes entries through end-of-day 2026-05-20.
