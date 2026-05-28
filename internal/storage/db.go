@@ -285,6 +285,16 @@ func (s *DB) migrate() error {
 	s.addColumnIfMissing("token_usage", "source_id", "TEXT NOT NULL DEFAULT ''")
 	s.addColumnIfMissing("token_usage", "cache_creation_tokens", "INT NOT NULL DEFAULT 0")
 	s.addColumnIfMissing("token_usage", "cache_read_tokens", "INT NOT NULL DEFAULT 0")
+	// ccusage residual-#2 / residual-#3 parity (parser.rs:170,182,260,273).
+	// reasoning_output_tokens: o1-style trace count surfaced separately
+	// from output_tokens (cost calc still folds it in). Stored as INTEGER
+	// with NOT NULL DEFAULT 0 so pre-existing rows migrate cleanly.
+	// is_fallback_model: 0/1 flag (SQLite has no bool) indicating the row's
+	// model column was defaulted to "gpt-5" because the source log did
+	// not record one — lets reporting tell defaulted rows apart from
+	// genuine gpt-5 traffic.
+	s.addColumnIfMissing("token_usage", "reasoning_output_tokens", "INTEGER NOT NULL DEFAULT 0")
+	s.addColumnIfMissing("token_usage", "is_fallback_model", "INTEGER NOT NULL DEFAULT 0")
 	s.addColumnIfMissing("file_changes", "source_id", "TEXT NOT NULL DEFAULT ''")
 
 	// Schema version controls one-shot migrations (time normalization, stale
@@ -653,13 +663,23 @@ func (s *DB) UpdateToolCallEnd(callID, result string, status event.ToolCallStatu
 // Pass "" to skip dedup.
 // insertTokenUsageTx executes one token_usage INSERT inside an existing TX.
 // It updates daily_cost_cache and sessions when a new row is written.
-func (s *DB) insertTokenUsageTx(tx *sql.Tx, agentID, sessionID string, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens int, model string, costUSD float64, ts time.Time, sourceID string) error {
+//
+// reasoningOutputTokens and isFallbackModel carry the ccusage residual
+// fields independently of the cost path: OutputTokens already folds the
+// reasoning count, and isFallbackModel is informational only — neither
+// changes session-total math, so the UPDATE sessions block below is
+// unchanged from before the residual rollout.
+func (s *DB) insertTokenUsageTx(tx *sql.Tx, agentID, sessionID string, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens int, model string, costUSD float64, ts time.Time, sourceID string, reasoningOutputTokens int, isFallbackModel bool) error {
 	tsStr := formatStorageTime(ts)
+	fallbackInt := 0
+	if isFallbackModel {
+		fallbackInt = 1
+	}
 	result, err := tx.Exec(`
 		INSERT OR IGNORE INTO token_usage
-			(agent_id, session_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, model, cost_usd, timestamp, source_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, agentID, sessionID, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, model, costUSD, tsStr, sourceID)
+			(agent_id, session_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, model, cost_usd, timestamp, source_id, reasoning_output_tokens, is_fallback_model)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, agentID, sessionID, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, model, costUSD, tsStr, sourceID, reasoningOutputTokens, fallbackInt)
 	if err != nil {
 		return err
 	}
@@ -697,13 +717,18 @@ func (s *DB) insertTokenUsageTx(tx *sql.Tx, agentID, sessionID string, inputToke
 	return err
 }
 
+// InsertTokenUsage is the public, single-row entry point. It defaults
+// reasoning_output_tokens=0 and is_fallback_model=false so existing
+// callers (tests, hooks that do not have the new fields yet) keep
+// working unchanged. Codex's batch path threads the real values through
+// InsertTokenUsageBatch below.
 func (s *DB) InsertTokenUsage(agentID, sessionID string, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens int, model string, costUSD float64, ts time.Time, sourceID string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }() // no-op after Commit
-	if err := s.insertTokenUsageTx(tx, agentID, sessionID, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, model, costUSD, ts, sourceID); err != nil {
+	if err := s.insertTokenUsageTx(tx, agentID, sessionID, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, model, costUSD, ts, sourceID, 0, false); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -725,7 +750,8 @@ func (s *DB) InsertTokenUsageBatch(events []event.Event) error {
 		if err := s.insertTokenUsageTx(tx, ev.AgentID, ev.SessionID,
 			ev.Data.InputTokens, ev.Data.OutputTokens,
 			ev.Data.CacheCreationTokens, ev.Data.CacheReadTokens,
-			ev.Data.Model, ev.Data.CostUSD, ev.Timestamp, ev.ID); err != nil {
+			ev.Data.Model, ev.Data.CostUSD, ev.Timestamp, ev.ID,
+			ev.Data.ReasoningOutputTokens, ev.Data.IsFallbackModel); err != nil {
 			return err
 		}
 	}
@@ -970,6 +996,11 @@ func (s *DB) InsertFileChangeWithSource(sessionID, filePath string, changeType e
 
 // TokenUsageEntry is a row from token_usage exposed for in-memory aggregation
 // by the blocks package (5h session-block identification).
+//
+// ReasoningOutputTokens and IsFallbackModel mirror the ccusage CodexRawUsage
+// residual columns (parser.rs:182,273 + 170,260): reasoning is the o1-style
+// trace count surfaced independently of OutputTokens, and IsFallbackModel
+// flags rows whose Model column was defaulted to "gpt-5".
 type TokenUsageEntry struct {
 	SourceID                 string
 	SessionID                string
@@ -981,6 +1012,8 @@ type TokenUsageEntry struct {
 	OutputTokens             int64
 	CacheCreationInputTokens int64
 	CacheReadInputTokens     int64
+	ReasoningOutputTokens    int64
+	IsFallbackModel          bool
 	CostUSD                  float64
 }
 
@@ -996,7 +1029,8 @@ func (s *DB) ListUsageForBlocks(ctx context.Context, since, until time.Time) ([]
 func (s *DB) ListUsageForBlocksFiltered(ctx context.Context, since, until time.Time, workspace string) ([]TokenUsageEntry, error) {
 	q := `SELECT u.source_id, u.session_id, u.agent_id, s.cwd, u.timestamp, u.model,
 	             u.input_tokens, u.output_tokens, u.cache_creation_tokens,
-	             u.cache_read_tokens, u.cost_usd
+	             u.cache_read_tokens, u.cost_usd,
+	             u.reasoning_output_tokens, u.is_fallback_model
 	      FROM token_usage u
 	      JOIN sessions s ON s.session_id = u.session_id`
 	var args []any
@@ -1031,15 +1065,18 @@ func (s *DB) scanUsageRows(ctx context.Context, q string, args []any) ([]TokenUs
 	var out []TokenUsageEntry
 	for rows.Next() {
 		var (
-			e        TokenUsageEntry
-			tsRaw    string
-			agentID  sql.NullString
-			model    sql.NullString
-			cacheCre sql.NullInt64
-			cacheRd  sql.NullInt64
+			e            TokenUsageEntry
+			tsRaw        string
+			agentID      sql.NullString
+			model        sql.NullString
+			cacheCre     sql.NullInt64
+			cacheRd      sql.NullInt64
+			reasoning    sql.NullInt64
+			fallbackFlag sql.NullInt64
 		)
 		if err := rows.Scan(&e.SourceID, &e.SessionID, &agentID, &e.CWD, &tsRaw, &model,
-			&e.InputTokens, &e.OutputTokens, &cacheCre, &cacheRd, &e.CostUSD); err != nil {
+			&e.InputTokens, &e.OutputTokens, &cacheCre, &cacheRd, &e.CostUSD,
+			&reasoning, &fallbackFlag); err != nil {
 			return nil, fmt.Errorf("scan usage row: %w", err)
 		}
 		ts, ok := parseStorageTime(tsRaw)
@@ -1051,6 +1088,8 @@ func (s *DB) scanUsageRows(ctx context.Context, q string, args []any) ([]TokenUs
 		e.Model = model.String
 		e.CacheCreationInputTokens = cacheCre.Int64
 		e.CacheReadInputTokens = cacheRd.Int64
+		e.ReasoningOutputTokens = reasoning.Int64
+		e.IsFallbackModel = fallbackFlag.Int64 != 0
 		out = append(out, e)
 	}
 	return out, rows.Err()

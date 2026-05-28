@@ -29,6 +29,72 @@ func TestOpenAndMigrate(t *testing.T) {
 	}
 }
 
+// TestTokenUsageReasoningAndFallbackRoundTrip pins the new residual
+// columns: a Codex token event whose EventData carries
+// ReasoningOutputTokens + IsFallbackModel persists those values through
+// InsertTokenUsageBatch and reads them back through ListUsageForBlocks.
+// Idempotent migration is exercised by reopening the same DB path: the
+// migrate() call repeats every Open, so the second open must succeed
+// without re-adding the now-present columns.
+func TestTokenUsageReasoningAndFallbackRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "round-trip.db")
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	ts := time.Date(2026, 1, 14, 12, 7, 16, 0, time.UTC)
+	if err := db.UpsertSession("s-reasoning", event.PlatformCodex, ts); err != nil {
+		t.Fatalf("upsert session: %v", err)
+	}
+	evs := []event.Event{{
+		ID:        "codex-rt-1",
+		Type:      event.EventTokenUsage,
+		SessionID: "s-reasoning",
+		Platform:  event.PlatformCodex,
+		Timestamp: ts,
+		Data: event.EventData{
+			InputTokens:           100,
+			OutputTokens:          37, // 30 + 7 reasoning (folded)
+			Model:                 "gpt-5",
+			ReasoningOutputTokens: 7,
+			IsFallbackModel:       true,
+			CostUSD:               0.01,
+		},
+	}}
+	if err := db.InsertTokenUsageBatch(evs); err != nil {
+		t.Fatalf("insert batch: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	// Reopen — exercises idempotent migrate against an existing schema.
+	db2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen db: %v", err)
+	}
+	defer db2.Close()
+	rows, err := db2.ListUsageForBlocks(context.Background(), time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("list usage: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	got := rows[0]
+	if got.ReasoningOutputTokens != 7 {
+		t.Errorf("ReasoningOutputTokens=%d want 7", got.ReasoningOutputTokens)
+	}
+	if !got.IsFallbackModel {
+		t.Errorf("IsFallbackModel=false want true")
+	}
+	if got.OutputTokens != 37 {
+		t.Errorf("OutputTokens=%d want 37 (fold preserved)", got.OutputTokens)
+	}
+}
+
 func TestOpenNormalizesLegacySecondPrecisionTimes(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.db")
