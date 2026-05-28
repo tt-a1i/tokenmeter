@@ -747,10 +747,11 @@ type codexTokenInfo struct {
 }
 
 type codexTokenUsage struct {
-	InputTokens       int `json:"input_tokens"`
-	OutputTokens      int `json:"output_tokens"`
-	TotalTokens       int `json:"total_tokens"`
-	CachedInputTokens int `json:"cached_input_tokens"`
+	InputTokens           int `json:"input_tokens"`
+	OutputTokens          int `json:"output_tokens"`
+	ReasoningOutputTokens int `json:"reasoning_output_tokens"`
+	TotalTokens           int `json:"total_tokens"`
+	CachedInputTokens     int `json:"cached_input_tokens"`
 }
 
 type codexExecUsage struct {
@@ -913,9 +914,10 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 			if usage.TotalTokens == 0 {
 				return nil
 			}
+			usage = normalizeCodexTokenUsage(usage)
 			sourceID := fmt.Sprintf("codex-tokens-%s-%d-%d-%d-%d", sessionID, ts.UnixNano(), usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens)
 			if msg.Info.TotalTokenUsage != nil && msg.Info.TotalTokenUsage.TotalTokens != 0 {
-				total := msg.Info.TotalTokenUsage
+				total := normalizeCodexTokenUsage(*msg.Info.TotalTokenUsage)
 				sourceID = fmt.Sprintf("codex-tokens-%s-total-%d-%d-%d-%d", sessionID, total.InputTokens, total.OutputTokens, total.CachedInputTokens, total.TotalTokens)
 			}
 			cost := 0.0
@@ -978,6 +980,7 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 		previousTotal.usage = current
 		previousTotal.ok = true
 	}
+	usage = normalizeCodexTokenUsage(usage)
 	if codexUsageEmpty(usage) {
 		return nil
 	}
@@ -987,7 +990,7 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 		cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, model)
 	}
 	return []event.Event{{
-		ID:        fmt.Sprintf("codex-tokens-total-%d-%s-%d-%d-%d-%d", ts.UnixNano(), model, current.InputTokens, current.OutputTokens, current.CachedInputTokens, current.TotalTokens),
+		ID:        fmt.Sprintf("codex-tokens-total-%d-%s-%d-%d-%d-%d", ts.UnixNano(), model, current.InputTokens, normalizeCodexTokenUsage(current).OutputTokens, current.CachedInputTokens, current.TotalTokens),
 		Type:      event.EventTokenUsage,
 		SessionID: sessionID,
 		Platform:  event.PlatformCodex,
@@ -1005,10 +1008,11 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 
 func subtractCodexUsage(current, previous codexTokenUsage) codexTokenUsage {
 	return codexTokenUsage{
-		InputTokens:       nonNegativeDelta(current.InputTokens, previous.InputTokens),
-		OutputTokens:      nonNegativeDelta(current.OutputTokens, previous.OutputTokens),
-		TotalTokens:       nonNegativeDelta(current.TotalTokens, previous.TotalTokens),
-		CachedInputTokens: nonNegativeDelta(current.CachedInputTokens, previous.CachedInputTokens),
+		InputTokens:           nonNegativeDelta(current.InputTokens, previous.InputTokens),
+		OutputTokens:          nonNegativeDelta(current.OutputTokens, previous.OutputTokens),
+		ReasoningOutputTokens: nonNegativeDelta(current.ReasoningOutputTokens, previous.ReasoningOutputTokens),
+		TotalTokens:           nonNegativeDelta(current.TotalTokens, previous.TotalTokens),
+		CachedInputTokens:     nonNegativeDelta(current.CachedInputTokens, previous.CachedInputTokens),
 	}
 }
 
@@ -1017,6 +1021,11 @@ func nonNegativeDelta(current, previous int) int {
 		return 0
 	}
 	return current - previous
+}
+
+func normalizeCodexTokenUsage(usage codexTokenUsage) codexTokenUsage {
+	usage.OutputTokens += usage.ReasoningOutputTokens
+	return usage
 }
 
 func codexUsageEmpty(usage codexTokenUsage) bool {
