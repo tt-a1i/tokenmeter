@@ -175,6 +175,77 @@ func TestParseCodexEntry_TokenCountFoldsReasoningOutputTokens(t *testing.T) {
 	}
 }
 
+// TestCodexWatcher_EventMsgPreservesReasoningOutputTokensField pins
+// ccusage residual-#2 parity for the event_msg/token_count path: even
+// though OutputTokens folds reasoning for cost calc, EventData carries
+// the raw reasoning_output_tokens count side-by-side so downstream
+// dedupe and analytics can tell two folded-output-equal rows apart.
+func TestCodexWatcher_EventMsgPreservesReasoningOutputTokensField(t *testing.T) {
+	entry := codexLogEntry{
+		Timestamp: "2026-01-14T12:07:16.785Z",
+		Type:      "event_msg",
+		Payload: json.RawMessage(`{
+			"type":"token_count",
+			"info":{
+				"last_token_usage":{
+					"input_tokens":100,
+					"output_tokens":30,
+					"reasoning_output_tokens":7,
+					"total_tokens":137
+				}
+			}
+		}`),
+	}
+
+	events := parseCodexEntryWithContext(entry, "session-1", "gpt-5-codex", "")
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Data.ReasoningOutputTokens != 7 {
+		t.Fatalf("ReasoningOutputTokens=%d want 7 (raw count separate from OutputTokens fold)", events[0].Data.ReasoningOutputTokens)
+	}
+	if events[0].Data.OutputTokens != 37 {
+		t.Fatalf("OutputTokens=%d want 37 (fold preserved)", events[0].Data.OutputTokens)
+	}
+}
+
+// TestCodexWatcher_SavedExecPreservesReasoningOutputTokensField pins
+// the same residual-#2 parity for parseCodexExecEntry's saved/headless
+// exec path. tokenUsage() folds reasoning into output and drops the
+// raw field, so the parser captures the value before that fold.
+func TestCodexWatcher_SavedExecPreservesReasoningOutputTokensField(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "savedexec-residual2-1111-1111-111111111111"
+	path := filepath.Join(dir, "run-"+sessionID+".jsonl")
+	writeLinesToFile(t, path,
+		`{"type":"turn.completed","timestamp":"2026-01-02T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":120,"output_tokens":30,"reasoning_output_tokens":7,"total_tokens":157}}`,
+	)
+
+	var emitted []event.Event
+	w := NewCodexWatcher(func(ev event.Event) { emitted = append(emitted, ev) })
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat test file: %v", err)
+	}
+	w.processFile(path, info.Size())
+
+	var tokenEvents []event.Event
+	for _, ev := range emitted {
+		if ev.Type == event.EventTokenUsage {
+			tokenEvents = append(tokenEvents, ev)
+		}
+	}
+	if len(tokenEvents) != 1 {
+		t.Fatalf("expected 1 saved exec token event, got %d", len(tokenEvents))
+	}
+	if tokenEvents[0].Data.ReasoningOutputTokens != 7 {
+		t.Fatalf("ReasoningOutputTokens=%d want 7 (raw value persisted alongside folded OutputTokens)", tokenEvents[0].Data.ReasoningOutputTokens)
+	}
+	if tokenEvents[0].Data.OutputTokens != 37 {
+		t.Fatalf("OutputTokens=%d want 37 (fold not regressed)", tokenEvents[0].Data.OutputTokens)
+	}
+}
+
 func TestParseCodexEntry_TokenCountClampsCachedTokens(t *testing.T) {
 	entry := codexLogEntry{
 		Timestamp: "2026-01-14T12:07:16.785Z",

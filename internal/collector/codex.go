@@ -916,6 +916,10 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 			if usage.TotalTokens == 0 {
 				return nil
 			}
+			// normalizeCodexTokenUsage folds reasoning into OutputTokens
+			// but leaves usage.ReasoningOutputTokens intact so we can
+			// surface the raw count on EventData independently — ccusage
+			// parser.rs:182 keeps it as a separate CodexRawUsage field.
 			usage = normalizeCodexTokenUsage(usage)
 			sourceID := fmt.Sprintf("codex-tokens-%s-%d-%d-%d-%d", sessionID, ts.UnixNano(), usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens)
 			if msg.Info.TotalTokenUsage != nil && msg.Info.TotalTokenUsage.TotalTokens != 0 {
@@ -931,12 +935,13 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 				Platform:  event.PlatformCodex,
 				Timestamp: ts,
 				Data: event.EventData{
-					InputTokens:     usage.InputTokens,
-					OutputTokens:    usage.OutputTokens,
-					CacheReadTokens: usage.CachedInputTokens,
-					Model:           eventModel,
-					CWD:             cwd,
-					CostUSD:         cost,
+					InputTokens:           usage.InputTokens,
+					OutputTokens:          usage.OutputTokens,
+					CacheReadTokens:       usage.CachedInputTokens,
+					ReasoningOutputTokens: usage.ReasoningOutputTokens,
+					Model:                 eventModel,
+					CWD:                   cwd,
+					CostUSD:               cost,
 				},
 			}}
 		}
@@ -995,12 +1000,13 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 		Platform:  event.PlatformCodex,
 		Timestamp: ts,
 		Data: event.EventData{
-			InputTokens:     usage.InputTokens,
-			OutputTokens:    usage.OutputTokens,
-			CacheReadTokens: usage.CachedInputTokens,
-			Model:           eventModel,
-			CWD:             cwd,
-			CostUSD:         cost,
+			InputTokens:           usage.InputTokens,
+			OutputTokens:          usage.OutputTokens,
+			CacheReadTokens:       usage.CachedInputTokens,
+			ReasoningOutputTokens: usage.ReasoningOutputTokens,
+			Model:                 eventModel,
+			CWD:                   cwd,
+			CostUSD:               cost,
 		},
 	}}
 }
@@ -1099,6 +1105,11 @@ func parseCodexExecEntry(entry codexLogEntry, sessionID, model, cwd string) []ev
 	if data.Usage == nil {
 		return nil
 	}
+	// Capture reasoning_output_tokens before tokenUsage() folds it into
+	// OutputTokens and drops the original field — ccusage's CodexRawUsage
+	// (parser.rs:273) keeps it as a side-channel value that downstream
+	// dedupe and analytics can read.
+	reasoning := data.Usage.ReasoningOutputTokens
 	usage := data.Usage.tokenUsage()
 	if codexUsageEmpty(usage) {
 		return nil
@@ -1114,12 +1125,13 @@ func parseCodexExecEntry(entry codexLogEntry, sessionID, model, cwd string) []ev
 		Platform:  event.PlatformCodex,
 		Timestamp: ts,
 		Data: event.EventData{
-			InputTokens:     usage.InputTokens,
-			OutputTokens:    usage.OutputTokens,
-			CacheReadTokens: usage.CachedInputTokens,
-			Model:           data.Model,
-			CWD:             cwd,
-			CostUSD:         cost,
+			InputTokens:           usage.InputTokens,
+			OutputTokens:          usage.OutputTokens,
+			CacheReadTokens:       usage.CachedInputTokens,
+			ReasoningOutputTokens: reasoning,
+			Model:                 data.Model,
+			CWD:                   cwd,
+			CostUSD:               cost,
 		},
 	}}
 }
