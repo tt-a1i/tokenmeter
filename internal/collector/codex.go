@@ -754,13 +754,14 @@ type codexTokenUsage struct {
 }
 
 type codexExecUsage struct {
-	InputTokens       int `json:"input_tokens"`
-	PromptTokens      int `json:"prompt_tokens"`
-	OutputTokens      int `json:"output_tokens"`
-	CompletionTokens  int `json:"completion_tokens"`
-	TotalTokens       int `json:"total_tokens"`
-	CachedInputTokens int `json:"cached_input_tokens"`
-	CachedTokens      int `json:"cached_tokens"`
+	InputTokens           int `json:"input_tokens"`
+	PromptTokens          int `json:"prompt_tokens"`
+	OutputTokens          int `json:"output_tokens"`
+	CompletionTokens      int `json:"completion_tokens"`
+	ReasoningOutputTokens int `json:"reasoning_output_tokens"`
+	TotalTokens           int `json:"total_tokens"`
+	CachedInputTokens     int `json:"cached_input_tokens"`
+	CachedTokens          int `json:"cached_tokens"`
 }
 
 type codexExecData struct {
@@ -1108,6 +1109,7 @@ func (u codexExecUsage) tokenUsage() codexTokenUsage {
 	if output == 0 {
 		output = u.CompletionTokens
 	}
+	output += u.ReasoningOutputTokens
 	cache := u.CachedInputTokens
 	if cache == 0 {
 		cache = u.CachedTokens
