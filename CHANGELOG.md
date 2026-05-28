@@ -3,6 +3,12 @@
 All notable changes to TokenMeter are tracked here. Versions follow semver.
 The "Unreleased" section captures work merged but not yet tagged.
 
+## Unreleased
+
+### Internal
+
+- **Claude token event source_id format changed**: now includes requestID for non-sidechain rows when present, to align with ccusage's same-uuid + different-requestID dedupe semantics. Existing DB rows from pre-upgrade daemon runs use the old format `claude-tokens-<session>-<uuid>` and will not collide with new-format IDs `claude-tokens-<session>-<uuid>-<requestID>`. A full rescan after upgrade may double-count Claude token rows. To avoid double-counting: keep the daemon running through upgrade (incremental `seen[]` offsets preserve dedup), or drop and recreate the database with `rm ~/.tokenmeter/data/tokenmeter.db && tm daemon`.
+
 ## v1.2.0 — TBD
 
 > Compared with v1.1.0.
