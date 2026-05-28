@@ -150,6 +150,13 @@ func parseAmpThreadFile(path string) ([]UsageEntry, error) {
 	if strings.TrimSpace(doc.ID) == "" {
 		return nil, nil
 	}
+	// ccusage parity: when usageLedger.events is absent or empty, fall back
+	// to parsing assistant messages[].usage. The ledger path takes
+	// precedence whenever it contains at least one event.
+	if len(doc.UsageLedger.Events) == 0 {
+		return parseAmpMessagesUsage(doc.Messages, doc.ID), nil
+	}
+
 	cache := ampCacheTokensByMessageID(doc.Messages)
 
 	out := make([]UsageEntry, 0, len(doc.UsageLedger.Events))
@@ -161,6 +168,88 @@ func parseAmpThreadFile(path string) ([]UsageEntry, error) {
 		out = append(out, entry)
 	}
 	return out, nil
+}
+
+// parseAmpMessagesUsage walks assistant messages[] and emits one UsageEntry
+// per row that carries a `usage` block. Timestamp and model fall back from
+// usage to message level; totalTokens is mapped to output_tokens when every
+// per-bucket counter is zero. Mirrors ccusage's parse_message_usage path.
+func parseAmpMessagesUsage(messages []json.RawMessage, threadID string) []UsageEntry {
+	out := make([]UsageEntry, 0, len(messages))
+	for _, raw := range messages {
+		entry, ok := parseAmpMessageUsage(raw, threadID)
+		if !ok {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func parseAmpMessageUsage(raw json.RawMessage, threadID string) (UsageEntry, bool) {
+	var msg struct {
+		Role      string          `json:"role"`
+		Timestamp string          `json:"timestamp"`
+		Model     string          `json:"model"`
+		Usage     *struct {
+			Timestamp                string          `json:"timestamp"`
+			Model                    string          `json:"model"`
+			InputTokens              json.RawMessage `json:"inputTokens"`
+			OutputTokens             json.RawMessage `json:"outputTokens"`
+			CacheCreationInputTokens json.RawMessage `json:"cacheCreationInputTokens"`
+			CacheReadInputTokens     json.RawMessage `json:"cacheReadInputTokens"`
+			TotalTokens              json.RawMessage `json:"totalTokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		return UsageEntry{}, false
+	}
+	if msg.Role != "assistant" || msg.Usage == nil {
+		return UsageEntry{}, false
+	}
+	tsText := strings.TrimSpace(msg.Usage.Timestamp)
+	if tsText == "" {
+		tsText = strings.TrimSpace(msg.Timestamp)
+	}
+	if tsText == "" {
+		return UsageEntry{}, false
+	}
+	ts, err := time.Parse(time.RFC3339Nano, tsText)
+	if err != nil {
+		return UsageEntry{}, false
+	}
+	model := strings.TrimSpace(msg.Usage.Model)
+	if model == "" {
+		model = strings.TrimSpace(msg.Model)
+	}
+	if model == "" {
+		return UsageEntry{}, false
+	}
+
+	input := ampParseInt64(msg.Usage.InputTokens)
+	output := ampParseInt64(msg.Usage.OutputTokens)
+	cacheCreate := ampParseInt64(msg.Usage.CacheCreationInputTokens)
+	cacheRead := ampParseInt64(msg.Usage.CacheReadInputTokens)
+	total := ampParseInt64(msg.Usage.TotalTokens)
+
+	if input == 0 && output == 0 && cacheCreate == 0 && cacheRead == 0 && total > 0 {
+		output = total
+	}
+	if input == 0 && output == 0 && cacheCreate == 0 && cacheRead == 0 {
+		return UsageEntry{}, false
+	}
+
+	return UsageEntry{
+		Source:                   "amp",
+		SessionID:                threadID,
+		ProjectPath:              "Amp",
+		Timestamp:                ts.UTC(),
+		Model:                    model,
+		InputTokens:              input,
+		OutputTokens:             output,
+		CacheCreationInputTokens: cacheCreate,
+		CacheReadInputTokens:     cacheRead,
+	}, true
 }
 
 // ampCacheTokens captures the two cache counters as they appear on an
