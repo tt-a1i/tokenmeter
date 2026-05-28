@@ -300,6 +300,42 @@ func TestCodexWatcher_DedupesRepeatedTotalTokenUsageSnapshots(t *testing.T) {
 	}
 }
 
+func TestCodexWatcher_LoadsSavedExecJSONUsage(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "savedexec-1111-1111-1111-111111111111"
+	path := filepath.Join(dir, "run-"+sessionID+".jsonl")
+	writeLinesToFile(t, path,
+		`{"type":"turn.completed","timestamp":"2026-01-02T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":120,"cached_input_tokens":20,"output_tokens":30,"total_tokens":150}}`,
+		`{"type":"result","payload":{"data":{"timestamp":"2026-01-02T03:05:05.000Z","model_name":"gpt-5.2-codex","usage":{"prompt_tokens":50,"cached_tokens":5,"completion_tokens":12}}}}`,
+	)
+
+	var emitted []event.Event
+	w := NewCodexWatcher(func(ev event.Event) { emitted = append(emitted, ev) })
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat test file: %v", err)
+	}
+	w.processFile(path, info.Size())
+
+	var tokenEvents []event.Event
+	for _, ev := range emitted {
+		if ev.Type == event.EventTokenUsage {
+			tokenEvents = append(tokenEvents, ev)
+		}
+	}
+	if len(tokenEvents) != 2 {
+		t.Fatalf("expected 2 saved exec token events, got %d: %#v", len(tokenEvents), tokenEvents)
+	}
+	if tokenEvents[0].Data.Model != "gpt-5.2-codex" || tokenEvents[0].Data.InputTokens != 120 ||
+		tokenEvents[0].Data.CacheReadTokens != 20 || tokenEvents[0].Data.OutputTokens != 30 {
+		t.Fatalf("turn.completed event = %#v", tokenEvents[0])
+	}
+	if tokenEvents[1].Data.Model != "gpt-5.2-codex" || tokenEvents[1].Data.InputTokens != 50 ||
+		tokenEvents[1].Data.CacheReadTokens != 5 || tokenEvents[1].Data.OutputTokens != 12 {
+		t.Fatalf("result event = %#v", tokenEvents[1])
+	}
+}
+
 func TestExtractSessionID(t *testing.T) {
 	tests := []struct {
 		filename string

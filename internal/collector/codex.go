@@ -704,6 +704,9 @@ type codexLogEntry struct {
 	Timestamp string          `json:"timestamp"`
 	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
+	Model     string          `json:"model,omitempty"`
+	Usage     *codexExecUsage `json:"usage,omitempty"`
+	Data      json.RawMessage `json:"data,omitempty"`
 }
 
 // session_meta payload
@@ -743,11 +746,32 @@ type codexTokenUsage struct {
 	CachedInputTokens int `json:"cached_input_tokens"`
 }
 
+type codexExecUsage struct {
+	InputTokens       int `json:"input_tokens"`
+	PromptTokens      int `json:"prompt_tokens"`
+	OutputTokens      int `json:"output_tokens"`
+	CompletionTokens  int `json:"completion_tokens"`
+	TotalTokens       int `json:"total_tokens"`
+	CachedInputTokens int `json:"cached_input_tokens"`
+	CachedTokens      int `json:"cached_tokens"`
+}
+
+type codexExecData struct {
+	Timestamp string          `json:"timestamp"`
+	Model     string          `json:"model"`
+	ModelName string          `json:"model_name"`
+	Usage     *codexExecUsage `json:"usage"`
+}
+
 func parseCodexEntry(entry codexLogEntry, sessionID string) []event.Event {
 	return parseCodexEntryWithContext(entry, sessionID, "", "")
 }
 
 func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd string) []event.Event {
+	if entry.Type == "turn.completed" || entry.Type == "result" {
+		return parseCodexExecEntry(entry, sessionID, model, cwd)
+	}
+
 	// Every output below uses ts as Event.Timestamp (drives daemon dedup and
 	// aggregation) or as part of a synthetic ID. Substituting time.Now() on
 	// parse failure would let stale or malformed log lines land in today's
@@ -909,6 +933,112 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 	}
 
 	return nil
+}
+
+func codexUsageEmpty(usage codexTokenUsage) bool {
+	return usage.InputTokens == 0 && usage.OutputTokens == 0 && usage.CachedInputTokens == 0 && usage.TotalTokens == 0
+}
+
+func parseCodexExecEntry(entry codexLogEntry, sessionID, model, cwd string) []event.Event {
+	data := codexExecData{
+		Timestamp: entry.Timestamp,
+		Model:     entry.Model,
+		Usage:     entry.Usage,
+	}
+	if len(entry.Data) > 0 {
+		_ = json.Unmarshal(entry.Data, &data)
+	}
+	if len(entry.Payload) > 0 {
+		var payload struct {
+			Timestamp string          `json:"timestamp"`
+			Model     string          `json:"model"`
+			ModelName string          `json:"model_name"`
+			Usage     *codexExecUsage `json:"usage"`
+			Data      *codexExecData  `json:"data"`
+		}
+		if json.Unmarshal(entry.Payload, &payload) == nil {
+			if payload.Data != nil {
+				data = *payload.Data
+			} else {
+				if payload.Timestamp != "" {
+					data.Timestamp = payload.Timestamp
+				}
+				if payload.Model != "" {
+					data.Model = payload.Model
+				}
+				if payload.ModelName != "" {
+					data.ModelName = payload.ModelName
+				}
+				if payload.Usage != nil {
+					data.Usage = payload.Usage
+				}
+			}
+		}
+	}
+	if data.Timestamp == "" {
+		data.Timestamp = entry.Timestamp
+	}
+	ts, ok := parseTimestamp(data.Timestamp)
+	if !ok {
+		return nil
+	}
+	if data.Model == "" {
+		data.Model = data.ModelName
+	}
+	if data.Model == "" {
+		data.Model = model
+	}
+	if data.Usage == nil {
+		return nil
+	}
+	usage := data.Usage.tokenUsage()
+	if codexUsageEmpty(usage) {
+		return nil
+	}
+	cost := 0.0
+	if data.Model != "" {
+		cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, data.Model)
+	}
+	return []event.Event{{
+		ID:        fmt.Sprintf("codex-exec-%s-%d-%d-%d-%d", sessionID, ts.UnixNano(), usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens),
+		Type:      event.EventTokenUsage,
+		SessionID: sessionID,
+		Platform:  event.PlatformCodex,
+		Timestamp: ts,
+		Data: event.EventData{
+			InputTokens:     usage.InputTokens,
+			OutputTokens:    usage.OutputTokens,
+			CacheReadTokens: usage.CachedInputTokens,
+			Model:           data.Model,
+			CWD:             cwd,
+			CostUSD:         cost,
+		},
+	}}
+}
+
+func (u codexExecUsage) tokenUsage() codexTokenUsage {
+	input := u.InputTokens
+	if input == 0 {
+		input = u.PromptTokens
+	}
+	output := u.OutputTokens
+	if output == 0 {
+		output = u.CompletionTokens
+	}
+	cache := u.CachedInputTokens
+	if cache == 0 {
+		cache = u.CachedTokens
+	}
+	total := u.TotalTokens
+	if total == 0 {
+		total = input + output
+	}
+	return codexTokenUsage{
+		InputTokens:       input,
+		OutputTokens:      output,
+		TotalTokens:       total,
+		CachedInputTokens: cache,
+	}
 }
 
 // parseTimestamp parses RFC3339(Nano) and returns (zero, false) on failure.
