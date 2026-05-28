@@ -201,7 +201,7 @@ func TestParseCodexEntry_TokenCountClampsCachedTokens(t *testing.T) {
 	}
 }
 
-func TestParseCodexEntry_TokenCountWithoutModelHasNoEstimatedCost(t *testing.T) {
+func TestParseCodexEntry_TokenCountDefaultsMissingModel(t *testing.T) {
 	entry := codexLogEntry{
 		Timestamp: "2026-01-14T12:07:16.785Z",
 		Type:      "event_msg",
@@ -217,11 +217,11 @@ func TestParseCodexEntry_TokenCountWithoutModelHasNoEstimatedCost(t *testing.T) 
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	if events[0].Data.Model != "" {
-		t.Fatalf("expected empty model, got %q", events[0].Data.Model)
+	if events[0].Data.Model != "gpt-5" {
+		t.Fatalf("Model=%q want gpt-5", events[0].Data.Model)
 	}
-	if events[0].Data.CostUSD != 0 {
-		t.Fatalf("expected unpriced event until model is known, got %f", events[0].Data.CostUSD)
+	if events[0].Data.CostUSD <= 0 {
+		t.Fatalf("expected priced event with fallback model, got %f", events[0].Data.CostUSD)
 	}
 }
 

@@ -744,6 +744,7 @@ type codexEventMsg struct {
 type codexTokenInfo struct {
 	LastTokenUsage  codexTokenUsage  `json:"last_token_usage"`
 	TotalTokenUsage *codexTokenUsage `json:"total_token_usage,omitempty"`
+	Model           string           `json:"model,omitempty"`
 }
 
 type codexTokenUsage struct {
@@ -910,6 +911,7 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 		}
 
 		if msg.Type == "token_count" && msg.Info != nil {
+			eventModel := codexEventModel(model, msg.Info.Model)
 			usage := msg.Info.LastTokenUsage
 			if usage.TotalTokens == 0 {
 				return nil
@@ -921,9 +923,7 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 				sourceID = fmt.Sprintf("codex-tokens-%s-total-%d-%d-%d-%d", sessionID, total.InputTokens, total.OutputTokens, total.CachedInputTokens, total.TotalTokens)
 			}
 			cost := 0.0
-			if model != "" {
-				cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, model)
-			}
+			cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, eventModel)
 			return []event.Event{{
 				ID:        sourceID,
 				Type:      event.EventTokenUsage,
@@ -934,7 +934,7 @@ func parseCodexEntryWithContext(entry codexLogEntry, sessionID, model, cwd strin
 					InputTokens:     usage.InputTokens,
 					OutputTokens:    usage.OutputTokens,
 					CacheReadTokens: usage.CachedInputTokens,
-					Model:           model,
+					Model:           eventModel,
 					CWD:             cwd,
 					CostUSD:         cost,
 				},
@@ -954,6 +954,7 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 	if json.Unmarshal(entry.Payload, &msg) != nil || msg.Type != "token_count" || msg.Info == nil || msg.Info.TotalTokenUsage == nil {
 		return parseCodexEntryWithContext(entry, sessionID, model, cwd)
 	}
+	eventModel := codexEventModel(model, msg.Info.Model)
 
 	if msg.Info.LastTokenUsage.TotalTokens != 0 {
 		if previousTotal != nil && msg.Info.TotalTokenUsage.TotalTokens != 0 {
@@ -986,11 +987,9 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 	}
 
 	cost := 0.0
-	if model != "" {
-		cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, model)
-	}
+	cost = estimateCodexCost(usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, eventModel)
 	return []event.Event{{
-		ID:        fmt.Sprintf("codex-tokens-total-%d-%s-%d-%d-%d-%d", ts.UnixNano(), model, current.InputTokens, normalizeCodexTokenUsage(current).OutputTokens, current.CachedInputTokens, current.TotalTokens),
+		ID:        fmt.Sprintf("codex-tokens-total-%d-%s-%d-%d-%d-%d", ts.UnixNano(), eventModel, current.InputTokens, normalizeCodexTokenUsage(current).OutputTokens, current.CachedInputTokens, current.TotalTokens),
 		Type:      event.EventTokenUsage,
 		SessionID: sessionID,
 		Platform:  event.PlatformCodex,
@@ -999,7 +998,7 @@ func parseCodexEntryWithState(entry codexLogEntry, sessionID, model, cwd string,
 			InputTokens:     usage.InputTokens,
 			OutputTokens:    usage.OutputTokens,
 			CacheReadTokens: usage.CachedInputTokens,
-			Model:           model,
+			Model:           eventModel,
 			CWD:             cwd,
 			CostUSD:         cost,
 		},
@@ -1029,6 +1028,16 @@ func normalizeCodexTokenUsage(usage codexTokenUsage) codexTokenUsage {
 		usage.CachedInputTokens = usage.InputTokens
 	}
 	return usage
+}
+
+func codexEventModel(currentModel, usageModel string) string {
+	if usageModel != "" {
+		return usageModel
+	}
+	if currentModel != "" {
+		return currentModel
+	}
+	return "gpt-5"
 }
 
 func codexUsageEmpty(usage codexTokenUsage) bool {
@@ -1195,7 +1204,7 @@ func annotateCodexTokenEvents(events []event.Event, model, cwd string) {
 		if events[i].Type != event.EventTokenUsage {
 			continue
 		}
-		if model != "" && events[i].Data.Model == "" {
+		if model != "" && (events[i].Data.Model == "" || events[i].Data.Model == "gpt-5") {
 			events[i].Data.Model = model
 			events[i].Data.CostUSD = estimateCodexCost(
 				events[i].Data.InputTokens,
