@@ -1025,6 +1025,9 @@ func nonNegativeDelta(current, previous int) int {
 
 func normalizeCodexTokenUsage(usage codexTokenUsage) codexTokenUsage {
 	usage.OutputTokens += usage.ReasoningOutputTokens
+	if usage.CachedInputTokens > usage.InputTokens {
+		usage.CachedInputTokens = usage.InputTokens
+	}
 	return usage
 }
 

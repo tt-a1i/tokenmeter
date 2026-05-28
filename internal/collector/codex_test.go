@@ -175,6 +175,32 @@ func TestParseCodexEntry_TokenCountFoldsReasoningOutputTokens(t *testing.T) {
 	}
 }
 
+func TestParseCodexEntry_TokenCountClampsCachedTokens(t *testing.T) {
+	entry := codexLogEntry{
+		Timestamp: "2026-01-14T12:07:16.785Z",
+		Type:      "event_msg",
+		Payload: json.RawMessage(`{
+			"type":"token_count",
+			"info":{
+				"last_token_usage":{
+					"input_tokens":100,
+					"cached_input_tokens":200,
+					"output_tokens":30,
+					"total_tokens":130
+				}
+			}
+		}`),
+	}
+
+	events := parseCodexEntryWithContext(entry, "session-1", "gpt-5-codex", "")
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Data.CacheReadTokens != 100 {
+		t.Fatalf("CacheReadTokens=%d want 100", events[0].Data.CacheReadTokens)
+	}
+}
+
 func TestParseCodexEntry_TokenCountWithoutModelHasNoEstimatedCost(t *testing.T) {
 	entry := codexLogEntry{
 		Timestamp: "2026-01-14T12:07:16.785Z",
