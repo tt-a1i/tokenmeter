@@ -319,6 +319,13 @@ func (d *claudeTokenDeduper) append(events []event.Event, entry claudeLogEntry, 
 		cost:      ev.Data.CostUSD,
 	}
 	if idx, ok := d.byUUID[entry.UUID]; ok {
+		// A watcher-scoped deduper can remember UUIDs from an earlier
+		// processFile pass, but the index points at that pass's bufferedEvents
+		// slice. The current pass starts with a fresh slice, so stale indices
+		// fall back to first-wins for streaming replay instead of replacing.
+		if idx >= len(events) {
+			return events
+		}
 		if !candidate.sidechain && !d.rows[idx].sidechain {
 			if claudeTokenDedupePrefers(candidate, d.rows[idx]) {
 				d.byUUID[entry.UUID] = len(events)
