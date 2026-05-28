@@ -1072,6 +1072,9 @@ func parseCodexExecEntry(entry codexLogEntry, sessionID, model, cwd string) []ev
 	if data.Model == "" {
 		data.Model = model
 	}
+	if data.Model == "" {
+		data.Model = "gpt-5"
+	}
 	if data.Usage == nil {
 		return nil
 	}
