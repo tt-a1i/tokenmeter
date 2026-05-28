@@ -7,6 +7,64 @@ import (
 	"testing"
 )
 
+// TestDetectTerminalWidthHonorsColumnsEnv pins ccusage v20's terminal
+// width precedence (rust/crates/ccusage-terminal/src/terminal.rs:5-19):
+// the COLUMNS env wins over TTY detection so scripts and CI runs can
+// drive the compact/full layout without simulating a terminal. Non-TTY
+// writers (the test's *bytes.Buffer) would otherwise yield (0, false).
+func TestDetectTerminalWidthHonorsColumnsEnv(t *testing.T) {
+	t.Setenv("COLUMNS", "80")
+	w, ok := detectTerminalWidth(&bytes.Buffer{})
+	if !ok || w != 80 {
+		t.Fatalf("COLUMNS=80 expected (80,true), got (%d,%t)", w, ok)
+	}
+}
+
+func TestDetectTerminalWidthIgnoresInvalidColumns(t *testing.T) {
+	t.Setenv("COLUMNS", "wide")
+	w, ok := detectTerminalWidth(&bytes.Buffer{})
+	if ok {
+		t.Fatalf("invalid COLUMNS should fall through to TTY detection; non-TTY writer should yield !ok, got (%d,%t)", w, ok)
+	}
+}
+
+func TestDetectTerminalWidthIgnoresZeroOrNegativeColumns(t *testing.T) {
+	for _, val := range []string{"0", "-1"} {
+		t.Setenv("COLUMNS", val)
+		w, ok := detectTerminalWidth(&bytes.Buffer{})
+		if ok {
+			t.Fatalf("COLUMNS=%q must not be accepted, got (%d,%t)", val, w, ok)
+		}
+	}
+}
+
+// TestRenderAggregateColumnsEnvForcesCompact is the end-to-end check
+// that the COLUMNS override actually changes the rendered layout.
+// detectTerminalWidth is exercised live (no withTerminalWidth shim),
+// and the non-TTY *bytes.Buffer would otherwise default to full.
+func TestRenderAggregateColumnsEnvForcesCompact(t *testing.T) {
+	t.Setenv("COLUMNS", "80")
+	out := renderAggregateForWidth(t, Options{})
+	for _, notWant := range []string{"MODELS", "CACHE CRT.", "CACHE READ"} {
+		if strings.Contains(out, notWant) {
+			t.Fatalf("COLUMNS=80 should force compact layout (omits %q):\n%s", notWant, out)
+		}
+	}
+	if !strings.Contains(out, "CACHE") {
+		t.Fatalf("compact layout missing CACHE column:\n%s", out)
+	}
+}
+
+func TestRenderAggregateColumnsEnvHonorsFullLayoutAboveThreshold(t *testing.T) {
+	t.Setenv("COLUMNS", "200")
+	out := renderAggregateForWidth(t, Options{})
+	for _, want := range []string{"MODELS", "CACHE CRT.", "CACHE READ"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("COLUMNS=200 should retain full layout (contains %q):\n%s", want, out)
+		}
+	}
+}
+
 func TestRenderAggregateUsesFullLayoutAtWideTerminal(t *testing.T) {
 	withTerminalWidth(t, 120, true)
 	out := renderAggregateForWidth(t, Options{})
