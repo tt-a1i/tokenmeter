@@ -84,7 +84,9 @@ Each batch adapter can be used as a top-level command.
 
 The accepted adapter commands are `amp`, `opencode`, `gemini`, `copilot`, `goose`, `codebuff`, `hermes`, `kilo`, `kimi`, `openclaw`, `pi`, `droid`, and `qwen`.
 
-Each adapter supports daily, weekly, monthly, and session buckets through the shared parser.
+Standard adapters support daily, monthly, and session buckets through the shared parser.
+
+`opencode` also supports weekly buckets.
 
 If no bucket is supplied, the adapter defaults to daily.
 
@@ -121,6 +123,9 @@ tm gemini session --json
 | `--context-low-threshold PCT` | Statusline: context warning threshold percent. |
 | `--context-medium-threshold PCT` | Statusline: context danger threshold percent. |
 | `--burn-rate-display MODE` | Statusline: burn-rate display, one of `off`, `emoji`, `text`, `emoji-text`. |
+| `--cost-source auto\|ccusage\|cc\|both` | Statusline: choose hook cost, TokenMeter-calculated session cost, or both. |
+| `--cache` / `--no-cache` | Statusline: enable or disable prompt-line caching. |
+| `--refresh-interval N` | Statusline: cache refresh interval in seconds. |
 | `--no-scan` | Skip batch adapter scans and use only SQLite. |
 
 ## Analyze Insight Flags

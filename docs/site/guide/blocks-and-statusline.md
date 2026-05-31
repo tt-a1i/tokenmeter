@@ -72,24 +72,38 @@ Look for fields like:
 
 ```json
 {
-  "blocks": [
-    {
-      "period": "2026-05-25 10:00 - 15:00",
-      "totalTokens": 120000,
-      "totalCost": 3.10,
-      "projection": {
-        "totalTokens": 220000,
-        "totalCost": 5.70,
-        "remainingTimeSeconds": 5400
-      }
-    }
-  ]
+	  "blocks": [
+	    {
+	      "id": "2026-05-25T10:00:00Z",
+	      "startTime": "2026-05-25T10:00:00Z",
+	      "endTime": "2026-05-25T15:00:00Z",
+	      "isActive": true,
+	      "tokenCounts": {
+	        "inputTokens": 60000,
+	        "outputTokens": 30000,
+	        "cacheCreationInputTokens": 0,
+	        "cacheReadInputTokens": 30000
+	      },
+	      "totalTokens": 120000,
+	      "costUSD": 3.10,
+	      "models": ["claude-sonnet-4-6"],
+	      "burnRate": {
+	        "tokensPerMinute": 2400,
+	        "costPerHour": 1.55
+	      },
+	      "projection": {
+	        "totalTokens": 220000,
+	        "totalCost": 5.70,
+	        "remainingMinutes": 90
+	      }
+	    }
+	  ]
 }
 ```
 
 The table and statusline can display burn-rate wording.
 
-The JSON contract currently exposes totals and projection rather than a dedicated burn-rate field.
+The JSON contract exposes totals, burn-rate, and projection fields.
 
 Burn rate is volatile early in a block.
 
@@ -179,9 +193,15 @@ Manual test:
 echo '{"session_id":"demo","cwd":"/tmp/demo","model_id":"claude-sonnet"}' | tm statusline
 ```
 
+Claude Code's current statusline hook shape uses nested model data and may include hook cost:
+
+```bash
+echo '{"session_id":"demo","cwd":"/tmp/demo","transcript_path":"/tmp/demo.jsonl","model":{"id":"claude-sonnet-4-6","display_name":"Claude Sonnet 4.6"},"cost":{"total_cost_usd":1.23}}' | tm statusline
+```
+
 The statusline reports the active block.
 
-It can include model, cost, remaining time, token count, burn rate, and context state.
+It can include model, session cost, today's cost, active block cost, remaining time, token count, burn rate, and context state.
 
 If no active block exists, it reports that state.
 
@@ -237,6 +257,19 @@ Mode list:
 | `emoji` | Show only a compact visual indicator. |
 | `text` | Show textual burn-rate state. |
 | `emoji-text` | Show both indicator and text. |
+
+When burn rate is shown, the line includes cost per hour plus the selected visual status.
+
+## Cost Source
+
+`--cost-source` controls the session cost displayed in the line:
+
+| Mode | Behavior |
+| --- | --- |
+| `auto` | Prefer Claude Code hook cost, then TokenMeter-calculated session cost. |
+| `cc` | Use only hook cost from `cost.total_cost_usd`. |
+| `ccusage` | Use TokenMeter-calculated session cost. |
+| `both` | Show hook cost and TokenMeter-calculated cost side by side. |
 
 Example:
 

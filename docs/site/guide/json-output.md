@@ -151,18 +151,19 @@ Common fields:
 
 | Field | Meaning |
 | --- | --- |
-| `period` | Human-readable block time window. |
-| `modelsUsed` | Models seen in the block. |
-| `inputTokens` | Prompt or input tokens. |
-| `outputTokens` | Completion or output tokens. |
-| `cacheCreationTokens` | Tokens written to cache. |
-| `cacheReadTokens` | Tokens read from cache. |
+| `id` | Block identifier, currently the block start timestamp. |
+| `startTime` | Block start timestamp. |
+| `endTime` | Scheduled block end timestamp. |
+| `actualEndTime` | Last observed usage timestamp when available. |
+| `isActive` | Whether the block is currently active. |
+| `isGap` | Whether the row represents an inactivity gap. |
+| `tokenCounts` | Nested token counts for input, output, cache creation, and cache reads. |
 | `totalTokens` | Tokens inside the block. |
-| `totalCost` | Cost inside the block. |
-| `status` | Block status, including token-limit status when enabled. |
-| `token_limit` | Limit provided by `--token-limit` when present. |
-| `usage_pct` | Percent of `token_limit` used when present. |
+| `costUSD` | Cost inside the block. |
+| `models` | Models seen in the block. |
+| `burnRate` | Observed rate for active blocks when available. |
 | `projection` | Estimated final values for active blocks when available. |
+| `tokenLimitStatus` | Limit status when `--token-limit` is present. |
 
 `projection` can include:
 
@@ -170,7 +171,7 @@ Common fields:
 | --- | --- |
 | `totalTokens` | Estimated final token count. |
 | `totalCost` | Estimated final cost. |
-| `remainingTimeSeconds` | Seconds left in the block. |
+| `remainingMinutes` | Minutes left in the block. |
 
 Projection fields are estimates.
 

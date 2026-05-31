@@ -22,9 +22,15 @@ Manual testing looks like this:
 echo '{"model_id":"claude-sonnet-4-6","session_id":"demo","cwd":"/tmp/demo"}' | tm statusline
 ```
 
+Claude Code's current hook input can also be used directly:
+
+```bash
+echo '{"session_id":"demo","cwd":"/tmp/demo","transcript_path":"/tmp/demo.jsonl","model":{"id":"claude-sonnet-4-6","display_name":"Claude Sonnet 4.6"},"cost":{"total_cost_usd":1.23}}' | tm statusline
+```
+
 If no active block exists, the output says there is no active block.
 
-If a block exists, the output includes model, cost, remaining time, and token count.
+If a block exists, the output includes model, session cost, today's cost, active block cost, remaining time, and token count.
 
 ## Config File
 
@@ -62,15 +68,25 @@ Current fields:
 
 `tm statusline` accepts shared flags.
 
-`--mode auto` is the default.
+Statusline defaults to offline pricing refresh behavior, matching ccusage.
+
+Use `--no-offline` when statusline may refresh runtime pricing.
+
+`--mode auto` is the default for active block cost calculation.
 
 `--mode display` prefers stored cost.
 
 `--mode calculate` recalculates when pricing data is available.
 
-The statusline uses the same pricing configuration path as report commands.
+`--cost-source auto` is the default for session cost display.
 
-Use `--offline` when statusline should never refresh runtime pricing.
+`--cost-source cc` uses the hook's `cost.total_cost_usd`.
+
+`--cost-source ccusage` uses TokenMeter-calculated session cost.
+
+`--cost-source both` displays both values.
+
+The statusline uses the same pricing configuration path as report commands.
 
 ## Relationship To Blocks
 
