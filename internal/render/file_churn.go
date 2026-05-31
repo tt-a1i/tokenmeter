@@ -1,7 +1,6 @@
 package render
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -20,7 +19,7 @@ type FileChurnReport struct {
 
 func (d defaultRenderer) RenderFileChurn(w io.Writer, report FileChurnReport, opts Options) error {
 	if opts.JSON {
-		return d.renderFileChurnJSON(w, report)
+		return d.renderFileChurnJSON(w, report, opts)
 	}
 	fmt.Fprintln(w, "Top Changed Files")
 	renderTopChurnFiles(w, report.TopFiles, opts)
@@ -33,10 +32,8 @@ func (d defaultRenderer) RenderFileChurn(w io.Writer, report FileChurnReport, op
 	return nil
 }
 
-func (d defaultRenderer) renderFileChurnJSON(w io.Writer, report FileChurnReport) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(map[string]FileChurnReport{"file_churn": report})
+func (d defaultRenderer) renderFileChurnJSON(w io.Writer, report FileChurnReport, opts Options) error {
+	return writeJSON(w, map[string]FileChurnReport{"file_churn": report}, opts)
 }
 
 func renderTopChurnFiles(w io.Writer, rows []storage.FileChurnStats, opts Options) {

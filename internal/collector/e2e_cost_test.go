@@ -24,6 +24,18 @@ func newTestDB(t *testing.T) *storage.DB {
 	return db
 }
 
+func forceStandardCodexPricing(t *testing.T) {
+	t.Helper()
+	if err := SetCodexSpeedMode("standard"); err != nil {
+		t.Fatalf("set codex speed: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := SetCodexSpeedMode("auto"); err != nil {
+			t.Fatalf("reset codex speed: %v", err)
+		}
+	})
+}
+
 // applyEventsToDB mirrors what the daemon does with TokenUsage events:
 // UpsertSession + InsertTokenUsage. Returns the number of events inserted.
 func applyEventsToDB(t *testing.T, db *storage.DB, platform event.Platform, events []event.Event) {
@@ -170,6 +182,8 @@ func TestClaudeProcessFileCommitsValidJSONAtEOFWithoutTrailingNewline(t *testing
 // re-emits the same event (simulating restart) and verifies the total does
 // NOT double because the source_id is stable across runs.
 func TestCodexEndToEndCost(t *testing.T) {
+	forceStandardCodexPricing(t)
+
 	const (
 		sessionID    = "sess-codex-e2e-1"
 		model        = "gpt-5.4"
@@ -263,6 +277,8 @@ func TestCodexEndToEndSameTimestampDifferentSessionsDoNotCollide(t *testing.T) {
 // otherwise-identical events produces distinct costs — proves the pricing
 // table wiring all the way through to the DB.
 func TestCodexEndToEndCostVariesByModel(t *testing.T) {
+	forceStandardCodexPricing(t)
+
 	mkEntry := func(ts string, in, out, cached int) codexLogEntry {
 		payload, _ := json.Marshal(map[string]any{
 			"type": "token_count",

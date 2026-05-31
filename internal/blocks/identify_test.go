@@ -56,4 +56,7 @@ func TestIdentifySplitOn5hGap(t *testing.T) {
 	if got[0].IsGap || !got[1].IsGap || got[2].IsGap {
 		t.Fatalf("expected gap at index 1, got isGap=%v,%v,%v", got[0].IsGap, got[1].IsGap, got[2].IsGap)
 	}
+	if !got[1].StartTime.Equal(base.Add(5*time.Hour)) || !got[1].EndTime.Equal(base.Add(6*time.Hour)) {
+		t.Fatalf("gap range = %s-%s, want last activity + duration through next entry", got[1].StartTime, got[1].EndTime)
+	}
 }

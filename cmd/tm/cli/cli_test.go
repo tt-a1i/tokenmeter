@@ -50,6 +50,34 @@ func TestParseSharedSessionLength(t *testing.T) {
 	}
 }
 
+func TestParseSharedCCUsageCompatFlags(t *testing.T) {
+	got, rest, err := cli.ParseShared([]string{
+		"-j", "-s", "20260520", "-u", "20260521", "-m", "calculate",
+		"-o", "desc", "-b", "-O", "--no-offline", "-z", "UTC",
+		"-q", ".totals", "--debug", "--debug-samples", "2",
+		"--single-thread", "--all", "-a", "-r", "-t", "max", "-n", "2.5",
+		"daily",
+	})
+	if err != nil {
+		t.Fatalf("ParseShared: %v", err)
+	}
+	if !got.JSON || got.Since != "20260520" || got.Until != "20260521" || got.Mode != "calculate" || got.Order != "desc" {
+		t.Fatalf("short flags not parsed: %+v", got)
+	}
+	if got.Offline {
+		t.Fatalf("--no-offline should clear -O: %+v", got)
+	}
+	if got.Timezone != "UTC" || got.JQ != ".totals" || !got.Debug || got.DebugSamples != "2" || !got.SingleThread || !got.All {
+		t.Fatalf("compat flags not parsed: %+v", got)
+	}
+	if !got.Active || !got.Recent || got.TokenLimit != "max" || got.SessionLength != 150*time.Minute {
+		t.Fatalf("blocks compat flags not parsed: %+v", got)
+	}
+	if len(rest) != 1 || rest[0] != "daily" {
+		t.Fatalf("rest=%v want [daily]", rest)
+	}
+}
+
 func TestParseSharedSpeedFlag(t *testing.T) {
 	got, rest, err := cli.ParseShared([]string{"--speed", "fast", "daily"})
 	if err != nil {

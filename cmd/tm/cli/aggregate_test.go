@@ -31,6 +31,19 @@ func (s stubAggregateLoader) ListUsageForBlocksFiltered(_ context.Context, _, _ 
 	return s.rows, nil
 }
 
+func (s stubAggregateLoader) ListUsageForBlocksFilteredByPlatform(_ context.Context, _, _ time.Time, _, platform string) ([]storage.TokenUsageEntry, error) {
+	if platform == "" {
+		return s.rows, nil
+	}
+	var out []storage.TokenUsageEntry
+	for _, row := range s.rows {
+		if row.AgentID == platform {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
 func (s stubAggregateLoader) AggregateUsage(_ context.Context, _ storage.AggregateFilter) ([]storage.AggregateUsageRow, error) {
 	return s.aggRows, nil
 }
@@ -44,6 +57,10 @@ type capturingLoader struct {
 }
 
 func (c *capturingLoader) ListUsageForBlocksFiltered(_ context.Context, _, _ time.Time, _ string) ([]storage.TokenUsageEntry, error) {
+	return nil, nil
+}
+
+func (c *capturingLoader) ListUsageForBlocksFilteredByPlatform(_ context.Context, _, _ time.Time, _, _ string) ([]storage.TokenUsageEntry, error) {
 	return nil, nil
 }
 
@@ -81,6 +98,20 @@ func TestRunAggregateUsesPushdownAPI(t *testing.T) {
 	}
 	if !strings.Contains(out, `"inputTokens": 100`) {
 		t.Errorf("expected inputTokens=100:\n%s", out)
+	}
+}
+
+func TestRunAggregateForwardsPlatformFilter(t *testing.T) {
+	loader := &capturingLoader{}
+	if err := cli.RunAggregate(context.Background(), &bytes.Buffer{}, cli.AggregateArgs{
+		Shared:   cli.Shared{},
+		Bucket:   cli.BucketDaily,
+		Platform: "codex",
+	}, loader); err != nil {
+		t.Fatal(err)
+	}
+	if loader.captured.Platform != "codex" {
+		t.Fatalf("Platform=%q want codex", loader.captured.Platform)
 	}
 }
 
@@ -391,10 +422,10 @@ func TestRunAggregateModeCalculateBreakdownPrecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, `"model": "claude-opus-4-7"`) {
+	if !strings.Contains(out, `"modelName": "claude-opus-4-7"`) {
 		t.Errorf("expected claude breakdown:\n%s", out)
 	}
-	if !strings.Contains(out, `"model": "gpt-5"`) {
+	if !strings.Contains(out, `"modelName": "gpt-5"`) {
 		t.Errorf("expected gpt breakdown:\n%s", out)
 	}
 	// Mode=calculate must recompute non-zero costs for both models.

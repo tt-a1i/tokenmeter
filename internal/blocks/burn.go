@@ -1,6 +1,7 @@
 package blocks
 
 import (
+	"math"
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/storage"
@@ -14,7 +15,11 @@ func WithBurnAndProjection(b SessionBlock, now time.Time) SessionBlock {
 	if !b.IsActive || b.IsGap || b.ActualEnd == nil {
 		return b
 	}
-	elapsed := b.ActualEnd.Sub(b.StartTime)
+	first := b.StartTime
+	if b.FirstEntry != nil {
+		first = *b.FirstEntry
+	}
+	elapsed := b.ActualEnd.Sub(first)
 	if elapsed <= 0 {
 		return b
 	}
@@ -25,16 +30,16 @@ func WithBurnAndProjection(b SessionBlock, now time.Time) SessionBlock {
 		TokensPerMinute: tokensPerMinute,
 		CostPerHour:     costPerHour,
 	}
-	remaining := b.EndTime.Sub(now)
-	if remaining < 0 {
-		remaining = 0
+	remainingMinutes := math.Round(b.EndTime.Sub(now).Minutes())
+	if remainingMinutes < 0 {
+		remainingMinutes = 0
 	}
-	projectedTokens := b.Tokens.Total() + int64(tokensPerMinute*remaining.Minutes())
-	projectedCost := b.Cost + costPerHour*remaining.Hours()
+	projectedTokens := int64(math.Round(totalTokens + tokensPerMinute*remainingMinutes))
+	projectedCost := b.Cost + (costPerHour/60.0)*remainingMinutes
 	b.Projection = &Projection{
 		TotalTokens:   projectedTokens,
-		TotalCost:     projectedCost,
-		RemainingTime: remaining,
+		TotalCost:     math.Round(projectedCost*100) / 100,
+		RemainingTime: time.Duration(remainingMinutes) * time.Minute,
 	}
 	return b
 }

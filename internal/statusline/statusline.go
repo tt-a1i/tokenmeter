@@ -16,15 +16,32 @@ import (
 // Input is the JSON payload Claude Code writes to stdin.
 type Input struct {
 	ModelID        string         `json:"model_id"`
+	Model          *InputModel    `json:"model,omitempty"`
 	SessionID      string         `json:"session_id"`
 	CWD            string         `json:"cwd"`
 	TranscriptPath string         `json:"transcript_path"`
+	Cost           *InputCost     `json:"cost,omitempty"`
 	ContextWindow  *ContextWindow `json:"context_window,omitempty"`
+}
+
+type InputModel struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+}
+
+type InputCost struct {
+	TotalCostUSD float64 `json:"total_cost_usd"`
 }
 
 type ContextWindow struct {
 	TotalInputTokens  int64 `json:"total_input_tokens"`
 	ContextWindowSize int64 `json:"context_window_size"`
+}
+
+type Metrics struct {
+	CostSource         string
+	CCUsageSessionCost *float64
+	TodayCost          float64
 }
 
 // Config controls quota + format. When QuotaUSD is 0, coloring is disabled
@@ -64,7 +81,6 @@ func LoadConfig(path string) (Config, error) {
 func ParseInput(r io.Reader) (Input, error) {
 	var in Input
 	dec := json.NewDecoder(r)
-	dec.DisallowUnknownFields() // be strict so upstream protocol changes surface early
 	if err := dec.Decode(&in); err != nil {
 		return Input{}, err
 	}
@@ -74,13 +90,21 @@ func ParseInput(r io.Reader) (Input, error) {
 // Render writes a single-line statusline to w. `block` may be nil (e.g. no
 // activity yet). `now` controls remaining-time math.
 func Render(w io.Writer, in Input, block *blocks.SessionBlock, cfg Config, now time.Time) error {
+	return RenderWithMetrics(w, in, block, cfg, now, defaultMetrics(in, block))
+}
+
+func RenderWithMetrics(w io.Writer, in Input, block *blocks.SessionBlock, cfg Config, now time.Time, metrics Metrics) error {
 	cfg = normalizeConfig(cfg)
+	modelID := inputModelID(in)
+	modelName := inputModelName(in)
 	var parts []string
-	parts = append(parts, modelEmoji(in.ModelID)+" "+shortModel(in.ModelID))
+	parts = append(parts, modelEmoji(modelID)+" "+shortModel(modelName))
+	parts = append(parts, "session "+sessionCostDisplay(in, metrics))
+	parts = append(parts, "today "+formatCurrency(metrics.TodayCost))
 	if block != nil && block.IsActive {
-		costStr := fmt.Sprintf("$%.2f", block.Cost)
+		costStr := formatCurrency(block.Cost)
 		if cfg.QuotaUSD > 0 {
-			costStr += "/" + fmt.Sprintf("$%.0f", cfg.QuotaUSD)
+			costStr += "/" + formatWholeCurrency(cfg.QuotaUSD)
 		}
 		costStr += " (5h"
 		if rem := remainingTime(block, now); rem > 0 {
@@ -90,18 +114,20 @@ func Render(w io.Writer, in Input, block *blocks.SessionBlock, cfg Config, now t
 			costStr += ", " + onTrackLabel(block.Projection.TotalCost, cfg.QuotaUSD)
 		}
 		costStr += ")"
-		parts = append(parts, costStr)
+		parts = append(parts, "block "+costStr)
 		parts = append(parts, formatTokens(block.Tokens.Total())+" tok")
 	} else {
 		parts = append(parts, "no active block")
 	}
 	if in.ContextWindow != nil && in.ContextWindow.ContextWindowSize > 0 {
 		percent := int(float64(in.ContextWindow.TotalInputTokens) * 100 / float64(in.ContextWindow.ContextWindowSize))
-		parts = append(parts, colorContextPercent(percent, cfg))
+		parts = append(parts, "ctx "+colorContextPercent(percent, cfg))
+	} else {
+		parts = append(parts, "ctx N/A")
 	}
 	if block != nil && block.BurnRate != nil {
 		if label := burnRateLabel(block.BurnRate, cfg.BurnRateDisplay); label != "" {
-			parts = append(parts, label)
+			parts = append(parts, "burn "+label)
 		}
 	}
 	line := strings.Join(parts, " ▎ ")
@@ -112,11 +138,19 @@ func Render(w io.Writer, in Input, block *blocks.SessionBlock, cfg Config, now t
 	return err
 }
 
+func defaultMetrics(in Input, block *blocks.SessionBlock) Metrics {
+	var ccusage *float64
+	if block != nil && block.IsActive {
+		ccusage = floatPtr(block.Cost)
+	}
+	return Metrics{CostSource: "auto", CCUsageSessionCost: ccusage}
+}
+
 func defaultConfig() Config {
 	return Config{
 		ContextLowThreshold:    50,
 		ContextMediumThreshold: 80,
-		BurnRateDisplay:        "emoji",
+		BurnRateDisplay:        "off",
 	}
 }
 
@@ -128,9 +162,77 @@ func normalizeConfig(c Config) Config {
 		c.ContextMediumThreshold = 80
 	}
 	if c.BurnRateDisplay == "" {
-		c.BurnRateDisplay = "emoji"
+		c.BurnRateDisplay = "off"
 	}
 	return c
+}
+
+func inputModelID(in Input) string {
+	if in.ModelID != "" {
+		return in.ModelID
+	}
+	if in.Model != nil && in.Model.ID != "" {
+		return in.Model.ID
+	}
+	if in.Model != nil {
+		return in.Model.DisplayName
+	}
+	return ""
+}
+
+func inputModelName(in Input) string {
+	if in.Model != nil && in.Model.DisplayName != "" {
+		return in.Model.DisplayName
+	}
+	return inputModelID(in)
+}
+
+func sessionCostDisplay(in Input, metrics Metrics) string {
+	source := metrics.CostSource
+	if source == "" {
+		source = "auto"
+	}
+	cc := hookCost(in)
+	ccusage := metrics.CCUsageSessionCost
+	switch source {
+	case "cc":
+		return formatOptionalCurrency(cc)
+	case "ccusage":
+		return formatOptionalCurrency(ccusage)
+	case "both":
+		return fmt.Sprintf("%s cc / %s ccusage", formatOptionalCurrency(cc), formatOptionalCurrency(ccusage))
+	default:
+		if cc != nil {
+			return formatCurrency(*cc)
+		}
+		return formatOptionalCurrency(ccusage)
+	}
+}
+
+func hookCost(in Input) *float64 {
+	if in.Cost == nil {
+		return nil
+	}
+	return &in.Cost.TotalCostUSD
+}
+
+func formatOptionalCurrency(v *float64) string {
+	if v == nil {
+		return "N/A"
+	}
+	return formatCurrency(*v)
+}
+
+func formatCurrency(v float64) string {
+	return fmt.Sprintf("$%.2f", v)
+}
+
+func formatWholeCurrency(v float64) string {
+	return fmt.Sprintf("$%.0f", v)
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
 }
 
 func ValidateConfig(c Config) error {
@@ -166,13 +268,14 @@ func burnRateLabel(rate *blocks.BurnRate, mode string) string {
 		return ""
 	}
 	emoji, level := burnRateStatus(rate.TokensPerMinute)
+	base := fmt.Sprintf("%s/hr", formatCurrency(rate.CostPerHour))
 	switch mode {
 	case "text":
-		return level
+		return base + " " + level
 	case "emoji-text":
-		return emoji + " " + level
+		return base + " " + emoji + " " + level
 	default:
-		return emoji
+		return base + " " + emoji
 	}
 }
 

@@ -56,6 +56,7 @@ func floorToHour(ts time.Time) time.Time {
 
 func buildBlock(start time.Time, entries []storage.TokenUsageEntry, now time.Time, dur time.Duration) SessionBlock {
 	end := start.Add(dur)
+	first := entries[0].Timestamp
 	last := entries[len(entries)-1].Timestamp
 	models := uniqueModels(entries)
 	tokens := sumTokens(entries)
@@ -64,6 +65,7 @@ func buildBlock(start time.Time, entries []storage.TokenUsageEntry, now time.Tim
 	return SessionBlock{
 		StartTime:  start,
 		EndTime:    end,
+		FirstEntry: &first,
 		ActualEnd:  &last,
 		IsActive:   active,
 		Tokens:     tokens,
@@ -73,9 +75,9 @@ func buildBlock(start time.Time, entries []storage.TokenUsageEntry, now time.Tim
 	}
 }
 
-func gapBlock(after, before time.Time, _ time.Duration) SessionBlock {
+func gapBlock(after, before time.Time, dur time.Duration) SessionBlock {
 	return SessionBlock{
-		StartTime: after,
+		StartTime: after.Add(dur),
 		EndTime:   before,
 		IsGap:     true,
 	}

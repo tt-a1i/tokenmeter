@@ -26,20 +26,37 @@ func TestRunSessionListMode(t *testing.T) {
 	}
 }
 
-func TestRunSessionOrderDesc(t *testing.T) {
+func TestRunSessionDefaultOrderByCostDesc(t *testing.T) {
 	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
-		{Bucket: "aaa", Models: []string{"claude"}, LastActivity: mustTime("2026-05-19T10:00:00Z")},
-		{Bucket: "zzz", Models: []string{"claude"}, LastActivity: mustTime("2026-05-19T11:00:00Z")},
+		{Bucket: "cheap", Models: []string{"claude"}, Cost: 1, LastActivity: mustTime("2026-05-19T10:00:00Z")},
+		{Bucket: "expensive", Models: []string{"claude"}, Cost: 9, LastActivity: mustTime("2026-05-19T11:00:00Z")},
 	}}
 	var buf bytes.Buffer
-	if err := cli.RunSession(context.Background(), &buf, cli.SessionArgs{Shared: cli.Shared{Order: "desc"}}, loader); err != nil {
+	if err := cli.RunSession(context.Background(), &buf, cli.SessionArgs{Shared: cli.Shared{}}, loader); err != nil {
 		t.Fatalf("RunSession: %v", err)
 	}
 	out := buf.String()
-	idxZ := strings.Index(out, "zzz")
-	idxA := strings.Index(out, "aaa")
-	if idxZ == -1 || idxA == -1 || idxZ > idxA {
-		t.Fatalf("expected zzz before aaa, got:\n%s", out)
+	idxExpensive := strings.Index(out, "expensive")
+	idxCheap := strings.Index(out, "cheap")
+	if idxExpensive == -1 || idxCheap == -1 || idxExpensive > idxCheap {
+		t.Fatalf("expected expensive before cheap, got:\n%s", out)
+	}
+}
+
+func TestRunSessionOrderAscByCost(t *testing.T) {
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "cheap", Models: []string{"claude"}, Cost: 1, LastActivity: mustTime("2026-05-19T10:00:00Z")},
+		{Bucket: "expensive", Models: []string{"claude"}, Cost: 9, LastActivity: mustTime("2026-05-19T11:00:00Z")},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf, cli.SessionArgs{Shared: cli.Shared{Order: "asc"}}, loader); err != nil {
+		t.Fatalf("RunSession: %v", err)
+	}
+	out := buf.String()
+	idxExpensive := strings.Index(out, "expensive")
+	idxCheap := strings.Index(out, "cheap")
+	if idxExpensive == -1 || idxCheap == -1 || idxCheap > idxExpensive {
+		t.Fatalf("expected cheap before expensive, got:\n%s", out)
 	}
 }
 
@@ -58,11 +75,11 @@ func TestRunSessionJSONSchema(t *testing.T) {
 	}
 	var got struct {
 		Sessions []struct {
-			SessionID    string    `json:"sessionId"`
-			LastActivity time.Time `json:"lastActivity"`
-			InputTokens  int64     `json:"inputTokens"`
-			OutputTokens int64     `json:"outputTokens"`
-			TotalCost    float64   `json:"totalCost"`
+			SessionID    string  `json:"sessionId"`
+			LastActivity string  `json:"lastActivity"`
+			InputTokens  int64   `json:"inputTokens"`
+			OutputTokens int64   `json:"outputTokens"`
+			TotalCost    float64 `json:"totalCost"`
 		} `json:"sessions"`
 	}
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
@@ -74,9 +91,31 @@ func TestRunSessionJSONSchema(t *testing.T) {
 	if got.Sessions[0].InputTokens != 300 || got.Sessions[0].TotalCost < 0.29 {
 		t.Errorf("aggregated tokens/cost wrong: %+v", got.Sessions[0])
 	}
-	want := mustTime("2026-05-19T11:30:00Z")
-	if !got.Sessions[0].LastActivity.Equal(want) {
-		t.Errorf("lastActivity: got %v, want %v", got.Sessions[0].LastActivity, want)
+	if got.Sessions[0].LastActivity != "2026-05-19" {
+		t.Errorf("lastActivity: got %q, want ccusage date string", got.Sessions[0].LastActivity)
+	}
+}
+
+func TestRunSessionJSONLastActivityUsesReportTimezone(t *testing.T) {
+	loader := stubAggregateLoader{aggRows: []storage.AggregateUsageRow{
+		{Bucket: "abc", Models: []string{"claude"}, InputTokens: 1, Cost: 0.1,
+			LastActivity: mustTime("2026-05-19T23:30:00Z")},
+	}}
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf,
+		cli.SessionArgs{Shared: cli.Shared{JSON: true, Timezone: "Asia/Tokyo"}}, loader); err != nil {
+		t.Fatalf("RunSession: %v", err)
+	}
+	var got struct {
+		Sessions []struct {
+			LastActivity string `json:"lastActivity"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(got.Sessions) != 1 || got.Sessions[0].LastActivity != "2026-05-20" {
+		t.Fatalf("lastActivity should honor timezone, got %+v", got.Sessions)
 	}
 }
 
@@ -123,6 +162,55 @@ func TestRunSessionFiltersBySessionID(t *testing.T) {
 	}
 	if strings.Contains(out, `"sessionId": "abc"`) {
 		t.Errorf("filtered-out session abc must not appear:\n%s", out)
+	}
+}
+
+func TestRunSessionIDJSONDetail(t *testing.T) {
+	ts := mustTime("2026-05-19T10:00:00Z")
+	loader := stubAggregateLoader{rows: []storage.TokenUsageEntry{{
+		SessionID:                "xyz",
+		Timestamp:                ts,
+		Model:                    "claude",
+		InputTokens:              10,
+		OutputTokens:             2,
+		CacheCreationInputTokens: 3,
+		CacheReadInputTokens:     4,
+		CostUSD:                  0.25,
+	}}}
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf,
+		cli.SessionArgs{Shared: cli.Shared{JSON: true}, SessionID: "xyz", Detail: true}, loader); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		SessionID   string `json:"sessionId"`
+		TotalTokens int64  `json:"totalTokens"`
+		Entries     []struct {
+			Model               string  `json:"model"`
+			InputTokens         int64   `json:"inputTokens"`
+			CacheCreationTokens int64   `json:"cacheCreationTokens"`
+			CostUSD             float64 `json:"costUSD"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if got.SessionID != "xyz" || got.TotalTokens != 19 || len(got.Entries) != 1 {
+		t.Fatalf("unexpected session detail: %+v", got)
+	}
+	if got.Entries[0].Model != "claude" || got.Entries[0].CacheCreationTokens != 3 {
+		t.Fatalf("unexpected entry detail: %+v", got.Entries[0])
+	}
+}
+
+func TestRunSessionIDJSONMissingIsNull(t *testing.T) {
+	var buf bytes.Buffer
+	if err := cli.RunSession(context.Background(), &buf,
+		cli.SessionArgs{Shared: cli.Shared{JSON: true}, SessionID: "missing", Detail: true}, stubAggregateLoader{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(buf.String()) != "null" {
+		t.Fatalf("missing detail = %q, want null", buf.String())
 	}
 }
 
@@ -217,5 +305,16 @@ func TestRunSessionForwardsFilterToBucketSession(t *testing.T) {
 	}
 	if !stub.captured.Breakdown {
 		t.Errorf("filter.Breakdown=true expected when Shared.Breakdown=true")
+	}
+}
+
+func TestRunSessionForwardsPlatformFilter(t *testing.T) {
+	stub := &capturingLoader{}
+	if err := cli.RunSession(context.Background(), &bytes.Buffer{},
+		cli.SessionArgs{Shared: cli.Shared{}, Platform: "claude"}, stub); err != nil {
+		t.Fatal(err)
+	}
+	if stub.captured.Platform != "claude" {
+		t.Errorf("filter.Platform: got %q, want claude", stub.captured.Platform)
 	}
 }

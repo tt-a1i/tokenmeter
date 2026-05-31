@@ -3,12 +3,14 @@ package cli
 import (
 	"context"
 	"io"
+	"os"
 	"time"
 
 	"github.com/tt-a1i/tokenmeter/internal/blocks"
 	tmconfig "github.com/tt-a1i/tokenmeter/internal/config"
 	"github.com/tt-a1i/tokenmeter/internal/pricing"
 	"github.com/tt-a1i/tokenmeter/internal/statusline"
+	"github.com/tt-a1i/tokenmeter/internal/storage"
 )
 
 // StatuslineReader is the loader contract the statusline subcommand needs.
@@ -29,10 +31,18 @@ type StatuslineReader interface {
 type StatuslineOptions struct {
 	NoColor                bool
 	Mode                   string
+	ModeSet                bool
+	CostSource             string
+	Cache                  bool
+	NoCache                bool
+	RefreshInterval        int
+	Debug                  bool
+	Timezone               string
 	ContextLowThreshold    int
 	ContextMediumThreshold int
 	BurnRateDisplay        string
 	ConfigPath             string
+	DebugWriter            io.Writer
 }
 
 type statuslineOpt func(*StatuslineOptions)
@@ -77,10 +87,34 @@ func RunStatusline(ctx context.Context, in io.Reader, out io.Writer, reader Stat
 	if err := statusline.ValidateConfig(cfg); err != nil {
 		return err
 	}
-	if o.Mode != "" {
-		reader = &modeAwareReader{inner: reader, mode: pricing.ParseMode(o.Mode)}
+	mode := statuslineCostMode(o.Mode, o.ModeSet)
+	if mode != "" {
+		reader = &modeAwareReader{inner: reader, mode: pricing.ParseMode(mode)}
 	}
-	return statusline.Run(ctx, in, out, reader, cfg, now)
+	refreshInterval := time.Duration(o.RefreshInterval) * time.Second
+	debugWriter := o.DebugWriter
+	if debugWriter == nil && o.Debug {
+		debugWriter = os.Stderr
+	}
+	cacheEnabled := o.Cache || !o.NoCache
+	if o.NoCache {
+		cacheEnabled = false
+	}
+	return statusline.RunWithOptions(ctx, in, out, reader, cfg, now, statusline.RunOptions{
+		CacheEnabled:    cacheEnabled,
+		RefreshInterval: refreshInterval,
+		Debug:           o.Debug,
+		DebugWriter:     debugWriter,
+		CostSource:      defaultString(o.CostSource, "auto"),
+		Timezone:        o.Timezone,
+	})
+}
+
+func statuslineCostMode(mode string, modeSet bool) string {
+	if modeSet && mode != "" {
+		return mode
+	}
+	return "auto"
 }
 
 func applyUnifiedStatuslineConfig(dst *statusline.Config, src tmconfig.StatuslineConfig) {
@@ -149,11 +183,58 @@ func (m *modeAwareReader) LoadActive(ctx context.Context) (*blocks.SessionBlock,
 	return b, nil
 }
 
+func (m *modeAwareReader) LoadSessionCost(ctx context.Context, sessionID string) (float64, bool, error) {
+	if er, ok := m.inner.(statuslineEntryReader); ok {
+		entries, err := er.ListStatuslineEntries(ctx, time.Time{}, time.Time{})
+		if err != nil {
+			return 0, false, err
+		}
+		entries = applyPricingMode(entries, m.mode)
+		var sum float64
+		found := false
+		for _, e := range entries {
+			if e.SessionID == sessionID {
+				sum += e.CostUSD
+				found = true
+			}
+		}
+		return sum, found, nil
+	}
+	if cr, ok := m.inner.(statusline.CostReader); ok {
+		return cr.LoadSessionCost(ctx, sessionID)
+	}
+	return 0, false, nil
+}
+
+func (m *modeAwareReader) LoadTodayCost(ctx context.Context, now time.Time, loc *time.Location) (float64, error) {
+	if er, ok := m.inner.(statuslineEntryReader); ok {
+		start, end := dayBounds(now, loc)
+		entries, err := er.ListStatuslineEntries(ctx, start, end)
+		if err != nil {
+			return 0, err
+		}
+		entries = applyPricingMode(entries, m.mode)
+		var sum float64
+		for _, e := range entries {
+			sum += e.CostUSD
+		}
+		return sum, nil
+	}
+	if cr, ok := m.inner.(statusline.CostReader); ok {
+		return cr.LoadTodayCost(ctx, now, loc)
+	}
+	return 0, nil
+}
+
 // activeBlockAdapter wraps a blocks.Reader so it satisfies StatuslineReader.
 type activeBlockAdapter struct {
 	r               blocks.Reader
 	sessionDuration time.Duration
 	now             time.Time
+}
+
+type statuslineEntryReader interface {
+	ListStatuslineEntries(ctx context.Context, since, until time.Time) ([]storage.TokenUsageEntry, error)
 }
 
 // NewActiveBlockAdapter returns a StatuslineReader that loads the active
@@ -165,4 +246,46 @@ func NewActiveBlockAdapter(r blocks.Reader, sessionDuration time.Duration, now t
 
 func (a *activeBlockAdapter) LoadActive(ctx context.Context) (*blocks.SessionBlock, error) {
 	return blocks.LoadActive(ctx, a.r, a.sessionDuration, a.now)
+}
+
+func (a *activeBlockAdapter) ListStatuslineEntries(ctx context.Context, since, until time.Time) ([]storage.TokenUsageEntry, error) {
+	return a.r.ListUsageForBlocks(ctx, since, until)
+}
+
+func (a *activeBlockAdapter) LoadSessionCost(ctx context.Context, sessionID string) (float64, bool, error) {
+	entries, err := a.ListStatuslineEntries(ctx, time.Time{}, time.Time{})
+	if err != nil {
+		return 0, false, err
+	}
+	var sum float64
+	found := false
+	for _, e := range entries {
+		if e.SessionID == sessionID {
+			sum += e.CostUSD
+			found = true
+		}
+	}
+	return sum, found, nil
+}
+
+func (a *activeBlockAdapter) LoadTodayCost(ctx context.Context, now time.Time, loc *time.Location) (float64, error) {
+	start, end := dayBounds(now, loc)
+	entries, err := a.ListStatuslineEntries(ctx, start, end)
+	if err != nil {
+		return 0, err
+	}
+	var sum float64
+	for _, e := range entries {
+		sum += e.CostUSD
+	}
+	return sum, nil
+}
+
+func dayBounds(now time.Time, loc *time.Location) (time.Time, time.Time) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	local := now.In(loc)
+	startLocal := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+	return startLocal.UTC(), startLocal.AddDate(0, 0, 1).Add(-time.Nanosecond).UTC()
 }

@@ -34,10 +34,78 @@ func TestParseSharedCompactAndStatuslineFlags(t *testing.T) {
 	}
 }
 
+func TestParseSharedVisualBurnRateAlias(t *testing.T) {
+	got, rest, err := cli.ParseShared([]string{"statusline", "--visual-burn-rate", "text"})
+	if err != nil {
+		t.Fatalf("ParseShared: %v", err)
+	}
+	if got.BurnRateDisplay != "text" {
+		t.Fatalf("BurnRateDisplay=%q want text", got.BurnRateDisplay)
+	}
+	if len(rest) != 1 || rest[0] != "statusline" {
+		t.Fatalf("rest=%v want [statusline]", rest)
+	}
+}
+
 func TestParseSharedRejectsInvalidBurnRateDisplay(t *testing.T) {
 	_, _, err := cli.ParseShared([]string{"--burn-rate-display", "loud"})
 	if err == nil {
 		t.Fatal("expected invalid --burn-rate-display to fail")
+	}
+}
+
+func TestParseSharedStatuslineCostSourceAndModeSet(t *testing.T) {
+	for _, source := range []string{"auto", "ccusage", "cc", "both"} {
+		t.Run(source, func(t *testing.T) {
+			got, rest, err := cli.ParseShared([]string{"statusline", "--cost-source", source})
+			if err != nil {
+				t.Fatalf("ParseShared cost-source: %v", err)
+			}
+			if got.CostSource != source || got.ModeSet {
+				t.Fatalf("cost-source parse mismatch: %+v", got)
+			}
+			if len(rest) != 1 || rest[0] != "statusline" {
+				t.Fatalf("rest=%v want [statusline]", rest)
+			}
+		})
+	}
+
+	got, _, err := cli.ParseShared([]string{"statusline", "--mode", "display"})
+	if err != nil {
+		t.Fatalf("ParseShared mode: %v", err)
+	}
+	if got.Mode != "display" || !got.ModeSet {
+		t.Fatalf("explicit mode should set ModeSet: %+v", got)
+	}
+
+	if _, _, err := cli.ParseShared([]string{"statusline", "--cost-source", "calculate"}); err == nil {
+		t.Fatal("expected invalid --cost-source calculate to fail")
+	}
+}
+
+func TestParseSharedStatuslineOfflineDefaults(t *testing.T) {
+	got, _, err := cli.ParseShared([]string{"statusline"})
+	if err != nil {
+		t.Fatalf("ParseShared statusline: %v", err)
+	}
+	if !got.Offline {
+		t.Fatalf("statusline should default to offline=true: %+v", got)
+	}
+
+	got, _, err = cli.ParseShared([]string{"statusline", "--no-offline"})
+	if err != nil {
+		t.Fatalf("ParseShared statusline --no-offline: %v", err)
+	}
+	if got.Offline {
+		t.Fatalf("--no-offline should clear statusline offline default: %+v", got)
+	}
+
+	got, _, err = cli.ParseShared([]string{"daily"})
+	if err != nil {
+		t.Fatalf("ParseShared daily: %v", err)
+	}
+	if got.Offline {
+		t.Fatalf("daily should not inherit statusline offline default: %+v", got)
 	}
 }
 

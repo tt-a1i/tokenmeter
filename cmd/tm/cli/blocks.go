@@ -19,8 +19,10 @@ import (
 // BlocksArgs is the resolved input to RunBlocks.
 type BlocksArgs struct {
 	Shared        Shared
+	Platform      string
 	SessionLength time.Duration
 	Active        bool
+	Recent        bool
 	Now           time.Time
 }
 
@@ -44,7 +46,7 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	if err != nil {
 		return err
 	}
-	entries, err := loader.ListUsageForBlocksFiltered(ctx, since, until, args.Shared.Project)
+	entries, err := listUsageForBlocks(ctx, loader, since, until, args.Shared.Project, args.Platform)
 	if err != nil {
 		return err
 	}
@@ -63,6 +65,8 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	}
 	if args.Active {
 		all = filterActive(all)
+	} else if args.Recent {
+		all = filterRecent(all, args.Now)
 	}
 	tokenLimit, err := resolveTokenLimit(args.Shared.TokenLimit, all)
 	if err != nil {
@@ -73,7 +77,14 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 	for _, annotated := range limited {
 		b := annotated.Block
 		row := render.BlockRow{
+			ID:                blockID(b),
 			Period:            b.StartTime.Format("2006-01-02 15:04"),
+			StartTime:         b.StartTime,
+			EndTime:           b.EndTime,
+			ActualEndTime:     b.ActualEnd,
+			IsActive:          b.IsActive,
+			IsGap:             b.IsGap,
+			EntryCount:        b.EntryCount,
 			Project:           blockProjects[b.StartTime],
 			Models:            b.Models,
 			InputTokens:       b.Tokens.Input,
@@ -86,6 +97,12 @@ func RunBlocks(ctx context.Context, out io.Writer, args BlocksArgs, loader Block
 			TokenLimit:        annotated.TokenLimit,
 			UsagePct:          annotated.UsagePct,
 			TokenLimitStatus:  annotated.TokenLimitStatus,
+		}
+		if b.BurnRate != nil {
+			row.BurnRate = &render.BlockBurnRate{
+				TokensPerMinute: b.BurnRate.TokensPerMinute,
+				CostPerHour:     b.BurnRate.CostPerHour,
+			}
 		}
 		if b.Projection != nil {
 			row.Projection = &render.BlockProjection{
@@ -172,6 +189,20 @@ func filterActive(in []blocks.SessionBlock) []blocks.SessionBlock {
 	return out
 }
 
+func filterRecent(in []blocks.SessionBlock, now time.Time) []blocks.SessionBlock {
+	cutoff := now.Add(-72 * time.Hour)
+	var out []blocks.SessionBlock
+	for _, b := range in {
+		if b.IsGap {
+			continue
+		}
+		if b.IsActive || !b.EndTime.Before(cutoff) {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 func blockStatus(b blocks.SessionBlock) string {
 	switch {
 	case b.IsActive:
@@ -181,4 +212,12 @@ func blockStatus(b blocks.SessionBlock) string {
 	default:
 		return "closed"
 	}
+}
+
+func blockID(b blocks.SessionBlock) string {
+	id := b.StartTime.UTC().Format("2006-01-02T15:04:05.000Z")
+	if b.IsGap {
+		return "gap-" + id
+	}
+	return id
 }

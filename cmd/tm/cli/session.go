@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os/exec"
 	"sort"
 	"time"
 
@@ -15,7 +18,9 @@ import (
 
 type SessionArgs struct {
 	Shared    Shared
+	Platform  string
 	SessionID string // optional; "" lists all
+	Detail    bool   // true when requested via --id/-i
 }
 
 // renderOpts builds render.Options from Shared, including the color
@@ -23,15 +28,20 @@ type SessionArgs struct {
 // RunBlocks, and RunAggregate.
 func renderOpts(s Shared, w io.Writer) render.Options {
 	return render.Options{
-		JSON:      s.JSON,
+		JSON:      s.JSON || s.JQ != "",
 		Breakdown: s.Breakdown,
 		Color:     render.Resolve(s.JSON, s.NoColor, w),
 		Compact:   s.Compact,
 		Instances: s.Instances,
+		JQ:        s.JQ,
 	}
 }
 
 func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader AggregateLoader) error {
+	if a.Detail {
+		return runSessionDetail(ctx, w, a, loader)
+	}
+
 	ul, ok := loader.(AggregateUsageLoader)
 	if !ok {
 		return fmt.Errorf("session loader %T does not implement AggregateUsage; rebuild against storage v1.0.2", loader)
@@ -70,6 +80,7 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 		Since:     since,
 		Until:     until,
 		Project:   a.Shared.Project,
+		Platform:  a.Platform,
 		Bucket:    storage.BucketSession,
 		Breakdown: a.Shared.Breakdown || needAutoFallback,
 		Location:  loc,
@@ -90,13 +101,123 @@ func RunSession(ctx context.Context, w io.Writer, a SessionArgs, loader Aggregat
 		}
 	}
 
-	if a.Shared.Order == "desc" {
-		sort.Slice(rows, func(i, j int) bool { return rows[i].SessionID > rows[j].SessionID })
+	if a.Shared.Order == "asc" {
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Cost < rows[j].Cost })
 	} else {
-		sort.Slice(rows, func(i, j int) bool { return rows[i].SessionID < rows[j].SessionID })
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Cost > rows[j].Cost })
 	}
 
-	return render.New().RenderSessions(w, rows, renderOpts(a.Shared, w))
+	opts := renderOpts(a.Shared, w)
+	opts.Location = loc
+	return render.New().RenderSessions(w, rows, opts)
+}
+
+type sessionDetailEntryJSON struct {
+	Timestamp           time.Time `json:"timestamp"`
+	InputTokens         int64     `json:"inputTokens"`
+	OutputTokens        int64     `json:"outputTokens"`
+	CacheCreationTokens int64     `json:"cacheCreationTokens"`
+	CacheReadTokens     int64     `json:"cacheReadTokens"`
+	Model               string    `json:"model"`
+	CostUSD             float64   `json:"costUSD"`
+}
+
+type sessionDetailJSON struct {
+	SessionID   string                   `json:"sessionId"`
+	TotalCost   float64                  `json:"totalCost"`
+	TotalTokens int64                    `json:"totalTokens"`
+	Entries     []sessionDetailEntryJSON `json:"entries"`
+}
+
+func runSessionDetail(ctx context.Context, w io.Writer, a SessionArgs, loader AggregateLoader) error {
+	since, err := parseDateFlag(a.Shared.Since)
+	if err != nil {
+		return err
+	}
+	until, err := ParseDateFlagUntil(a.Shared.Until)
+	if err != nil {
+		return err
+	}
+	entries, err := listUsageForBlocks(ctx, loader, since, until, a.Shared.Project, a.Platform)
+	if err != nil {
+		return err
+	}
+	entries = applyPricingMode(entries, pricing.ParseMode(a.Shared.Mode))
+	filtered := entries[:0]
+	for _, e := range entries {
+		if e.SessionID == a.SessionID {
+			filtered = append(filtered, e)
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool { return filtered[i].Timestamp.Before(filtered[j].Timestamp) })
+	wantsJSON := a.Shared.JSON || a.Shared.JQ != ""
+	if len(filtered) == 0 {
+		if wantsJSON {
+			return writeSessionJSON(w, nil, a.Shared.JQ)
+		}
+		fmt.Fprintf(w, "No session found with ID: %s\n", a.SessionID)
+		return nil
+	}
+
+	detail := sessionDetailJSON{
+		SessionID: a.SessionID,
+		Entries:   make([]sessionDetailEntryJSON, 0, len(filtered)),
+	}
+	for _, e := range filtered {
+		total := e.InputTokens + e.OutputTokens + e.CacheCreationInputTokens + e.CacheReadInputTokens
+		detail.TotalTokens += total
+		detail.TotalCost += e.CostUSD
+		model := e.Model
+		if model == "" {
+			model = "unknown"
+		}
+		detail.Entries = append(detail.Entries, sessionDetailEntryJSON{
+			Timestamp:           e.Timestamp,
+			InputTokens:         e.InputTokens,
+			OutputTokens:        e.OutputTokens,
+			CacheCreationTokens: e.CacheCreationInputTokens,
+			CacheReadTokens:     e.CacheReadInputTokens,
+			Model:               model,
+			CostUSD:             e.CostUSD,
+		})
+	}
+	if wantsJSON {
+		return writeSessionJSON(w, detail, a.Shared.JQ)
+	}
+	fmt.Fprintf(w, "Claude Code Session Usage - %s\n", a.SessionID)
+	fmt.Fprintf(w, "Total Cost: $%.2f\n", detail.TotalCost)
+	fmt.Fprintf(w, "Total Tokens: %d\n", detail.TotalTokens)
+	fmt.Fprintf(w, "Total Entries: %d\n", len(detail.Entries))
+	return nil
+}
+
+func writeSessionJSON(w io.Writer, v any, jq string) error {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return err
+	}
+	if jq == "" {
+		_, err := w.Write(buf.Bytes())
+		return err
+	}
+	path, err := exec.LookPath("jq")
+	if err != nil {
+		return fmt.Errorf("--jq requires jq executable in PATH: %w", err)
+	}
+	cmd := exec.Command(path, jq)
+	cmd.Stdin = bytes.NewReader(buf.Bytes())
+	var stderr bytes.Buffer
+	cmd.Stdout = w
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return fmt.Errorf("jq failed: %s", bytes.TrimSpace(stderr.Bytes()))
+		}
+		return fmt.Errorf("jq failed: %w", err)
+	}
+	return nil
 }
 
 // convertSessionRows folds storage rows (one row per (sessionId, model) when

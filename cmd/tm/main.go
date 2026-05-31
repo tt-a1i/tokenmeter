@@ -198,7 +198,7 @@ func main() {
 		}
 	case "update":
 		runUpdate()
-	case "version", "-v", "--version":
+	case "version", "-v", "-V", "--version":
 		if err := runVersion(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -207,6 +207,7 @@ func main() {
 		printHelp()
 	case "daily", "weekly", "monthly", "session", "blocks", "statusline", "pricing", "config",
 		"cost", "report", "status", "top",
+		"claude", "codex",
 		"amp", "codebuff", "copilot", "droid", "gemini", "goose", "hermes",
 		"kilo", "kimi", "openclaw", "opencode", "pi", "qwen":
 		if maybePrintCmdHelp(args[0], args[1:]) {
@@ -227,24 +228,25 @@ func normalizeTopLevelArgs(args []string) []string {
 	if len(args) == 0 {
 		return args
 	}
+	args = normalizeLegacyTopLevelAgentArgs(args)
 	var globals []string
 	i := 0
 	for i < len(args) {
 		arg := args[i]
 		switch {
-		case arg == "--config":
+		case isTopLevelValueFlag(arg):
 			if i+1 >= len(args) {
 				return append([]string(nil), args...)
 			}
 			globals = append(globals, arg, args[i+1])
 			i += 2
-		case strings.HasPrefix(arg, "--config="):
+		case isTopLevelValueFlagWithEquals(arg):
 			globals = append(globals, arg)
 			i++
-		case arg == "--no-color" || arg == "--offline":
+		case isTopLevelBoolFlag(arg):
 			globals = append(globals, arg)
 			i++
-		case strings.HasPrefix(arg, "--offline="):
+		case isTopLevelBoolFlagWithEquals(arg):
 			globals = append(globals, arg)
 			i++
 		default:
@@ -256,7 +258,144 @@ func normalizeTopLevelArgs(args []string) []string {
 			return out
 		}
 	}
+	if len(globals) > 0 {
+		command := "daily"
+		if topLevelArgsIncludeSessionID(globals) {
+			command = "session"
+		}
+		out := []string{command}
+		out = append(out, globals...)
+		return out
+	}
 	return append([]string(nil), args...)
+}
+
+func normalizeLegacyTopLevelAgentArgs(args []string) []string {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "" {
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			if isTopLevelValueFlag(arg) && !strings.Contains(arg, "=") {
+				i++
+			}
+			continue
+		}
+		agent, report, ok := splitLegacyTopLevelAgentCommand(arg)
+		if !ok {
+			return args
+		}
+		out := make([]string, 0, len(args)+1)
+		out = append(out, args[:i]...)
+		out = append(out, agent, report)
+		out = append(out, args[i+1:]...)
+		return out
+	}
+	return args
+}
+
+func splitLegacyTopLevelAgentCommand(arg string) (string, string, bool) {
+	agent, report, ok := strings.Cut(arg, ":")
+	if !ok || !topLevelAgentReportSupported(agent, report) {
+		return "", "", false
+	}
+	return agent, report, true
+}
+
+func topLevelAgentReportSupported(agent, report string) bool {
+	switch agent {
+	case "claude":
+		switch report {
+		case "daily", "weekly", "monthly", "session", "blocks", "statusline":
+			return true
+		}
+	case "codex":
+		switch report {
+		case "daily", "monthly", "session":
+			return true
+		}
+	case "opencode":
+		switch report {
+		case "daily", "weekly", "monthly", "session":
+			return true
+		}
+	case "amp", "codebuff", "copilot", "droid", "gemini", "goose", "hermes", "kilo", "kimi", "openclaw", "pi", "qwen":
+		switch report {
+		case "daily", "monthly", "session":
+			return true
+		}
+	}
+	return false
+}
+
+func topLevelArgsIncludeSessionID(args []string) bool {
+	for _, arg := range args {
+		if arg == "--id" || arg == "-i" || strings.HasPrefix(arg, "--id=") || strings.HasPrefix(arg, "-i=") {
+			return true
+		}
+	}
+	return false
+}
+
+func isTopLevelValueFlag(arg string) bool {
+	switch arg {
+	case "--config", "--since", "-s", "--until", "-u", "--mode", "-m", "--order", "-o",
+		"--start-of-week", "-w",
+		"--timezone", "-z", "--project", "-p", "--jq", "-q", "--id", "-i",
+		"--burn-rate-display", "--visual-burn-rate", "-B", "--cost-source",
+		"--refresh-interval", "--debug-samples", "--project-aliases",
+		"--token-limit", "-t", "--session-length", "-n", "--speed",
+		"--context-low-threshold", "--context-medium-threshold", "--cpu-profile":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTopLevelValueFlagWithEquals(arg string) bool {
+	for _, name := range []string{
+		"--config", "--since", "-s", "--until", "-u", "--mode", "-m", "--order", "-o",
+		"--start-of-week", "-w",
+		"--timezone", "-z", "--project", "-p", "--jq", "-q", "--id", "-i",
+		"--burn-rate-display", "--visual-burn-rate", "-B", "--cost-source",
+		"--refresh-interval", "--debug-samples", "--project-aliases",
+		"--token-limit", "-t", "--session-length", "-n", "--speed",
+		"--context-low-threshold", "--context-medium-threshold", "--cpu-profile",
+	} {
+		if strings.HasPrefix(arg, name+"=") {
+			return true
+		}
+	}
+	return false
+}
+
+func isTopLevelBoolFlag(arg string) bool {
+	switch arg {
+	case "--json", "-j", "--breakdown", "-b", "--offline", "-O", "--no-offline",
+		"--debug", "-d",
+		"--no-color", "--color", "--compact", "--instances", "--cache", "--no-cache",
+		"--single-thread", "--all", "--active", "-a", "--recent", "-r",
+		"--no-scan":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTopLevelBoolFlagWithEquals(arg string) bool {
+	for _, name := range []string{
+		"--json", "-j", "--breakdown", "-b", "--offline", "-O", "--no-offline",
+		"--debug", "-d",
+		"--no-color", "--color", "--compact", "--instances", "--cache", "--no-cache",
+		"--single-thread", "--all", "--active", "-a", "--recent", "-r",
+		"--no-scan",
+	} {
+		if strings.HasPrefix(arg, name+"=") {
+			return true
+		}
+	}
+	return false
 }
 
 // runCLIDispatch routes argv to the new ccusage-aligned cli subcommands
@@ -297,8 +436,8 @@ func runCLIDispatch(argv []string) error {
 	defer db.Close()
 	now := time.Now()
 	switch cmd.Name {
-	case "daily", "weekly", "monthly":
-		if cmd.Shared.NoScan {
+	case "daily", "weekly", "monthly", "session-all":
+		if cmd.Shared.NoScan || cmd.AggregateArgs.Platform != "" {
 			return cli.RunAggregate(ctx, os.Stdout, cmd.AggregateArgs, db)
 		}
 		return cli.RunAggregateAllSource(ctx, os.Stdout, cmd.AggregateArgs, db, cli.AllAdapters)
@@ -313,6 +452,13 @@ func runCLIDispatch(argv []string) error {
 			cli.WithStatuslineOptions(cli.StatuslineOptions{
 				NoColor:                cmd.Shared.NoColor,
 				Mode:                   cmd.Shared.Mode,
+				ModeSet:                cmd.Shared.ModeSet,
+				CostSource:             cmd.Shared.CostSource,
+				Cache:                  cmd.Shared.Cache,
+				NoCache:                cmd.Shared.NoCache,
+				RefreshInterval:        cmd.Shared.RefreshInterval,
+				Debug:                  cmd.Shared.Debug,
+				Timezone:               cmd.Shared.Timezone,
 				ContextLowThreshold:    cmd.Shared.ContextLowThreshold,
 				ContextMediumThreshold: cmd.Shared.ContextMediumThreshold,
 				BurnRateDisplay:        cmd.Shared.BurnRateDisplay,

@@ -51,21 +51,36 @@ type SessionRow struct {
 
 // BlockRow mirrors blocks.SessionBlock in render-layer-friendly form.
 type BlockRow struct {
-	Period            string // "2026-05-19 10:00"
-	Project           string
-	Models            []string
-	InputTokens       int64
-	OutputTokens      int64
-	CacheCreateTokens int64
-	CacheReadTokens   int64
-	TotalTokens       int64
-	Cost              float64
-	Status            string // "ACTIVE" | "closed" | "gap"
-	Projection        *BlockProjection
-	Breakdown         []ModelBreakdown // populated when opts.Breakdown=true
-	TokenLimit        int64
-	UsagePct          float64
-	TokenLimitStatus  string
+	ID                  string
+	Period              string // "2026-05-19 10:00"
+	StartTime           time.Time
+	EndTime             time.Time
+	ActualEndTime       *time.Time
+	IsActive            bool
+	IsGap               bool
+	EntryCount          int
+	Project             string
+	Models              []string
+	InputTokens         int64
+	OutputTokens        int64
+	CacheCreateTokens   int64
+	CacheReadTokens     int64
+	TotalTokens         int64
+	Cost                float64
+	Status              string // "ACTIVE" | "closed" | "gap"
+	BurnRate            *BlockBurnRate
+	Projection          *BlockProjection
+	UsageLimitResetTime *time.Time
+	Breakdown           []ModelBreakdown // populated when opts.Breakdown=true
+	TokenLimit          int64
+	UsagePct            float64
+	TokenLimitStatus    string
+}
+
+// BlockBurnRate holds velocity metadata for an active block.
+type BlockBurnRate struct {
+	TokensPerMinute float64
+	CostPerHour     float64
 }
 
 // BlockProjection holds extrapolated totals for an active block.
@@ -82,6 +97,8 @@ type Options struct {
 	JSON      bool
 	Compact   bool
 	Instances bool
+	JQ        string
+	Location  *time.Location
 }
 
 // Renderer is the entrypoint used by cli/* handlers.

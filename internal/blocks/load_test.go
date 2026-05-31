@@ -39,7 +39,7 @@ func TestLoadActiveReturnsOnlyActive(t *testing.T) {
 	if active == nil {
 		t.Fatalf("expected one active block, got nil")
 	}
-	if active.BurnRate == nil {
-		t.Fatalf("active block must include burn rate")
+	if !active.IsActive {
+		t.Fatalf("expected active block")
 	}
 }

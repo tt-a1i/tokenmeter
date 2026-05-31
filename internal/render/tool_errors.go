@@ -1,7 +1,6 @@
 package render
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -19,7 +18,7 @@ type ToolErrorReport struct {
 
 func (d defaultRenderer) RenderToolErrors(w io.Writer, report ToolErrorReport, opts Options) error {
 	if opts.JSON {
-		return d.renderToolErrorsJSON(w, report)
+		return d.renderToolErrorsJSON(w, report, opts)
 	}
 	fmt.Fprintln(w, "Top Failing Tools")
 	renderTopFailingTools(w, report.TopTools)
@@ -32,10 +31,8 @@ func (d defaultRenderer) RenderToolErrors(w io.Writer, report ToolErrorReport, o
 	return nil
 }
 
-func (d defaultRenderer) renderToolErrorsJSON(w io.Writer, report ToolErrorReport) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(map[string]ToolErrorReport{"tool_errors": report})
+func (d defaultRenderer) renderToolErrorsJSON(w io.Writer, report ToolErrorReport, opts Options) error {
+	return writeJSON(w, map[string]ToolErrorReport{"tool_errors": report}, opts)
 }
 
 func renderTopFailingTools(w io.Writer, rows []storage.ToolErrorStats) {

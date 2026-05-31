@@ -14,7 +14,7 @@ import (
 // is set.
 func (d defaultRenderer) RenderAggregate(w io.Writer, kind string, rows []AggregateRow, opts Options) error {
 	if opts.JSON {
-		return d.renderAggregateJSON(w, kind, rows)
+		return d.renderAggregateJSON(w, kind, rows, opts)
 	}
 	if len(rows) == 0 {
 		fmt.Fprintln(w, "(no data in range)")
@@ -189,7 +189,7 @@ func aggregateHasProjects(rows []AggregateRow) bool {
 // TOTAL footer leaves PROJECT blank — it's a per-row identifier, not summable.
 func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Options) error {
 	if opts.JSON {
-		return d.renderSessionsJSON(w, rows)
+		return d.renderSessionsJSON(w, rows, opts)
 	}
 	if len(rows) == 0 {
 		fmt.Fprintln(w, "(no data in range)")
@@ -294,7 +294,7 @@ func (d defaultRenderer) RenderSessions(w io.Writer, rows []SessionRow, opts Opt
 // TOTAL footer leaves STATUS blank (status is per-row, not summable).
 func (d defaultRenderer) RenderBlocks(w io.Writer, rows []BlockRow, opts Options) error {
 	if opts.JSON {
-		return d.renderBlocksJSON(w, rows)
+		return d.renderBlocksJSON(w, rows, opts)
 	}
 	if len(rows) == 0 {
 		fmt.Fprintln(w, "(no data in range)")

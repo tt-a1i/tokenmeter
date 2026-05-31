@@ -1027,6 +1027,13 @@ func (s *DB) ListUsageForBlocks(ctx context.Context, since, until time.Time) ([]
 // ListUsageForBlocksFiltered returns token_usage rows joined to sessions and
 // filtered by workspace cwd (exact match). Empty workspace skips the filter.
 func (s *DB) ListUsageForBlocksFiltered(ctx context.Context, since, until time.Time, workspace string) ([]TokenUsageEntry, error) {
+	return s.ListUsageForBlocksFilteredByPlatform(ctx, since, until, workspace, "")
+}
+
+// ListUsageForBlocksFilteredByPlatform returns token_usage rows joined to
+// sessions and filtered by workspace cwd and/or platform. Empty filters are
+// ignored.
+func (s *DB) ListUsageForBlocksFilteredByPlatform(ctx context.Context, since, until time.Time, workspace, platform string) ([]TokenUsageEntry, error) {
 	q := `SELECT u.source_id, u.session_id, u.agent_id, s.cwd, u.timestamp, u.model,
 	             u.input_tokens, u.output_tokens, u.cache_creation_tokens,
 	             u.cache_read_tokens, u.cost_usd,
@@ -1046,6 +1053,10 @@ func (s *DB) ListUsageForBlocksFiltered(ctx context.Context, since, until time.T
 	if workspace != "" {
 		wheres = append(wheres, "s.cwd = ?")
 		args = append(args, workspace)
+	}
+	if platform != "" {
+		wheres = append(wheres, "s.platform = ?")
+		args = append(args, platform)
 	}
 	if len(wheres) > 0 {
 		q += " WHERE " + strings.Join(wheres, " AND ")

@@ -27,9 +27,11 @@ type AggregateFilter struct {
 	Since     time.Time
 	Until     time.Time
 	Project   string // sessions.cwd exact match; "" disables filter
+	Platform  string // sessions.platform exact match; "" disables filter
 	Bucket    AggregateBucket
 	Breakdown bool           // true => add u.model as a secondary GROUP BY column
 	Location  *time.Location // nil treated as UTC; affects day/week/month bucket key
+	WeekStart time.Weekday   // for BucketWeek; zero value is Sunday
 }
 
 // AggregateUsageRow is one row returned by AggregateUsage.
@@ -50,7 +52,7 @@ type AggregateUsageRow struct {
 // joined to sessions. The returned rows are pre-sorted by Bucket ascending
 // (and by Model ascending when Breakdown=true).
 func (s *DB) AggregateUsage(ctx context.Context, f AggregateFilter) ([]AggregateUsageRow, error) {
-	bucketExpr, err := s.bucketExpr(f.Bucket, f.Location)
+	bucketExpr, err := s.bucketExpr(f.Bucket, f.Location, f.WeekStart)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +96,7 @@ func (s *DB) AggregateUsage(ctx context.Context, f AggregateFilter) ([]Aggregate
 	// PRAGMA foreign_keys defaults to OFF and the REFERENCES clause is
 	// declarative-only. A future task may enable PRAGMA foreign_keys=ON
 	// after confirming no orphan rows in existing user DBs.
-	needSessions := f.Project != "" || f.Bucket == BucketSession
+	needSessions := f.Project != "" || f.Platform != "" || f.Bucket == BucketSession
 	if needSessions {
 		q += `
 	FROM token_usage u
@@ -117,6 +119,10 @@ func (s *DB) AggregateUsage(ctx context.Context, f AggregateFilter) ([]Aggregate
 	if f.Project != "" {
 		wheres = append(wheres, "s.cwd = ?")
 		args = append(args, f.Project)
+	}
+	if f.Platform != "" {
+		wheres = append(wheres, "s.platform = ?")
+		args = append(args, f.Platform)
 	}
 	if len(wheres) > 0 {
 		q += " WHERE " + strings.Join(wheres, " AND ")
@@ -166,7 +172,7 @@ func (s *DB) AggregateUsage(ctx context.Context, f AggregateFilter) ([]Aggregate
 	return out, rowsIter.Err()
 }
 
-func (s *DB) bucketExpr(bucket AggregateBucket, loc *time.Location) (string, error) {
+func (s *DB) bucketExpr(bucket AggregateBucket, loc *time.Location, weekStart time.Weekday) (string, error) {
 	tzMod := ""
 	if loc != nil && loc != time.UTC {
 		_, offset := time.Now().In(loc).Zone()
@@ -177,7 +183,8 @@ func (s *DB) bucketExpr(bucket AggregateBucket, loc *time.Location) (string, err
 	case BucketDay:
 		return "date(u.timestamp" + tzMod + ")", nil
 	case BucketWeek:
-		return "strftime('%Y-W%W', u.timestamp" + tzMod + ")", nil
+		start := int(weekStart)
+		return fmt.Sprintf("date(u.timestamp%s, '-' || ((CAST(strftime('%%w', u.timestamp%s) AS INTEGER) - %d + 7) %% 7) || ' days')", tzMod, tzMod, start), nil
 	case BucketMonth:
 		return "strftime('%Y-%m', u.timestamp" + tzMod + ")", nil
 	case BucketSession:

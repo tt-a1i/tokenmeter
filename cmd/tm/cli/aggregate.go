@@ -33,12 +33,19 @@ const (
 type AggregateArgs struct {
 	Shared Shared
 	Bucket Bucket
+	// Platform restricts SQLite-backed source commands (claude/codex).
+	// Empty means all local platforms.
+	Platform string
 }
 
 // AggregateLoader is the read-side interface RunSession / RunDeprecatedAlias
 // continue to take. RunAggregate needs more — see AggregateUsageLoader.
 type AggregateLoader interface {
 	ListUsageForBlocksFiltered(ctx context.Context, since, until time.Time, workspace string) ([]storage.TokenUsageEntry, error)
+}
+
+type platformUsageLoader interface {
+	ListUsageForBlocksFilteredByPlatform(ctx context.Context, since, until time.Time, workspace, platform string) ([]storage.TokenUsageEntry, error)
 }
 
 // AggregateUsageLoader is what RunAggregate actually requires post-push-down.
@@ -84,7 +91,7 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 
 	mode := pricing.ParseMode(a.Shared.Mode)
 	if a.Shared.Instances || a.Shared.ProjectAliases != "" {
-		entries, err := loader.ListUsageForBlocksFiltered(ctx, since, until, a.Shared.Project)
+		entries, err := listUsageForBlocks(ctx, loader, since, until, a.Shared.Project, a.Platform)
 		if err != nil {
 			return err
 		}
@@ -93,7 +100,7 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 		if err != nil {
 			return err
 		}
-		rows := aggregateEntriesByProject(entries, a.Bucket, loc, aliases)
+		rows := aggregateEntriesByProject(entries, a.Bucket, loc, aliases, weekStartFromShared(a.Shared))
 		if a.Shared.Order == "desc" {
 			sort.Slice(rows, func(i, j int) bool {
 				if rows[i].Bucket == rows[j].Bucket {
@@ -116,9 +123,11 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 		Since:     since,
 		Until:     until,
 		Project:   a.Shared.Project,
+		Platform:  a.Platform,
 		Bucket:    cliBucketToStorage(a.Bucket),
 		Breakdown: a.Shared.Breakdown || needAutoFallback,
 		Location:  loc,
+		WeekStart: weekStartFromShared(a.Shared),
 	}
 	aggRows, err := ul.AggregateUsage(ctx, filter)
 	if err != nil {
@@ -134,7 +143,7 @@ func RunAggregate(ctx context.Context, w io.Writer, a AggregateArgs, loader Aggr
 	return render.New().RenderAggregate(w, bucketKind(a.Bucket), rows, renderOpts(a.Shared, w))
 }
 
-func aggregateEntriesByProject(entries []storage.TokenUsageEntry, bucket Bucket, loc *time.Location, aliases projectalias.Aliases) []render.AggregateRow {
+func aggregateEntriesByProject(entries []storage.TokenUsageEntry, bucket Bucket, loc *time.Location, aliases projectalias.Aliases, weekStart time.Weekday) []render.AggregateRow {
 	type key struct {
 		bucket  string
 		project string
@@ -143,7 +152,7 @@ func aggregateEntriesByProject(entries []storage.TokenUsageEntry, bucket Bucket,
 	order := []key{}
 	for _, e := range entries {
 		project := resolveProjectName(aliases, e.CWD)
-		k := key{bucket: entryBucket(e.Timestamp, bucket, loc), project: project}
+		k := key{bucket: entryBucket(e.Timestamp, bucket, loc, weekStart), project: project}
 		row, ok := byKey[k]
 		if !ok {
 			row = &render.AggregateRow{Bucket: k.bucket, Project: project}
@@ -178,15 +187,14 @@ func resolveProjectName(aliases projectalias.Aliases, cwd string) string {
 	return projectalias.Aliases{}.Resolve(cwd)
 }
 
-func entryBucket(ts time.Time, bucket Bucket, loc *time.Location) string {
+func entryBucket(ts time.Time, bucket Bucket, loc *time.Location, weekStart time.Weekday) string {
 	if loc == nil {
 		loc = time.UTC
 	}
 	t := ts.In(loc)
 	switch bucket {
 	case BucketWeekly:
-		year, week := t.ISOWeek()
-		return fmt.Sprintf("%04d-W%02d", year, week)
+		return weekStartKey(t, weekStart)
 	case BucketMonthly:
 		return t.Format("2006-01")
 	default:
@@ -435,7 +443,7 @@ func RunAggregateAllSource(ctx context.Context, w io.Writer, a AggregateArgs, sq
 	}
 	mode := pricing.ParseMode(a.Shared.Mode)
 
-	sqliteEntries, err := sqliteLoader.ListUsageForBlocksFiltered(ctx, since, until, a.Shared.Project)
+	sqliteEntries, err := listUsageForBlocks(ctx, sqliteLoader, since, until, a.Shared.Project, a.Platform)
 	if err != nil {
 		return err
 	}
@@ -496,7 +504,7 @@ func RunAggregateAllSource(ctx context.Context, w io.Writer, a AggregateArgs, sq
 
 	needAutoFallback := mode == pricing.ModeAuto && !a.Shared.Breakdown
 	breakdown := a.Shared.Breakdown || needAutoFallback
-	aggRows := aggregateEntriesInMemory(all, a.Bucket, loc, breakdown)
+	aggRows := aggregateEntriesInMemory(all, a.Bucket, loc, breakdown, weekStartFromShared(a.Shared))
 	rows := convertAggregateRows(aggRows, a.Shared.Breakdown, mode, needAutoFallback)
 	if a.Shared.Order == "desc" {
 		sort.Slice(rows, func(i, j int) bool { return rows[i].Bucket > rows[j].Bucket })
@@ -509,7 +517,7 @@ func RunAggregateAllSource(ctx context.Context, w io.Writer, a AggregateArgs, sq
 // boxed renderer. Mirrors storage.AggregateUsage's grouping contract:
 // breakdown=true emits one row per (bucket, model); breakdown=false emits
 // one row per bucket with Models[] populated.
-func aggregateEntriesInMemory(entries []storage.TokenUsageEntry, bucket Bucket, loc *time.Location, breakdown bool) []storage.AggregateUsageRow {
+func aggregateEntriesInMemory(entries []storage.TokenUsageEntry, bucket Bucket, loc *time.Location, breakdown bool, weekStart time.Weekday) []storage.AggregateUsageRow {
 	type key struct{ bucket, model string }
 	type acc struct {
 		models          []string
@@ -525,7 +533,7 @@ func aggregateEntriesInMemory(entries []storage.TokenUsageEntry, bucket Bucket, 
 		tt := t.In(loc)
 		switch bucket {
 		case BucketWeekly:
-			return weekKeySQLiteW(tt)
+			return weekStartKey(tt, weekStart)
 		case BucketMonthly:
 			return tt.Format("2006-01")
 		case BucketSession:
@@ -599,6 +607,19 @@ func aggregateEntriesInMemory(entries []storage.TokenUsageEntry, bucket Bucket, 
 	return out
 }
 
+func weekStartFromShared(s Shared) time.Weekday {
+	day, err := parseWeekday(s.StartOfWeek)
+	if err != nil {
+		return time.Sunday
+	}
+	return day
+}
+
+func weekStartKey(t time.Time, start time.Weekday) string {
+	shift := (int(t.Weekday()) - int(start) + 7) % 7
+	return t.AddDate(0, 0, -shift).Format("2006-01-02")
+}
+
 // applyPricingMode rewrites each entry's CostUSD according to mode. Kept
 // here for cli/blocks.go, which still drives entry-level pricing during
 // its own push-down migration; once that lands, this helper becomes dead
@@ -633,6 +654,17 @@ func applyPricingMode(entries []storage.TokenUsageEntry, mode pricing.Mode) []st
 		}, speedForModel(e.Model))
 	}
 	return out
+}
+
+func listUsageForBlocks(ctx context.Context, loader AggregateLoader, since, until time.Time, project, platform string) ([]storage.TokenUsageEntry, error) {
+	if platform == "" {
+		return loader.ListUsageForBlocksFiltered(ctx, since, until, project)
+	}
+	pl, ok := loader.(platformUsageLoader)
+	if !ok {
+		return nil, fmt.Errorf("usage loader %T does not support platform filter %q", loader, platform)
+	}
+	return pl.ListUsageForBlocksFilteredByPlatform(ctx, since, until, project, platform)
 }
 
 // weekKeySQLiteW returns a "YYYY-Www" string equivalent to SQLite's

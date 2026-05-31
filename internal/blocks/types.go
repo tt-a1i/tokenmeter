@@ -39,6 +39,9 @@ type Projection struct {
 type SessionBlock struct {
 	StartTime time.Time
 	EndTime   time.Time
+	// FirstEntry is the timestamp of the first usage entry in the block.
+	// It is used for ccusage-compatible burn-rate calculation.
+	FirstEntry *time.Time
 	// ActualEnd is the timestamp of the last entry in the block.
 	// Nil for gap blocks.
 	ActualEnd  *time.Time

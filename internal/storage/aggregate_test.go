@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/tt-a1i/tokenmeter/internal/event"
 )
 
 func mustTime(t *testing.T, s string) time.Time {
@@ -27,7 +29,12 @@ func openTestDB(t *testing.T) *DB {
 
 func seedRow(t *testing.T, db *DB, sessionID, model string, ts time.Time, input, output, cacheCre, cacheRd int, cost float64) {
 	t.Helper()
-	if err := db.UpsertSession(sessionID, "claude", ts); err != nil {
+	seedRowWithPlatform(t, db, sessionID, "claude", model, ts, input, output, cacheCre, cacheRd, cost)
+}
+
+func seedRowWithPlatform(t *testing.T, db *DB, sessionID, platform, model string, ts time.Time, input, output, cacheCre, cacheRd int, cost float64) {
+	t.Helper()
+	if err := db.UpsertSession(sessionID, event.Platform(platform), ts); err != nil {
 		t.Fatalf("upsert session: %v", err)
 	}
 	if err := db.InsertTokenUsage("", sessionID, input, output, cacheCre, cacheRd, model, cost, ts, sessionID+"-"+ts.Format(time.RFC3339Nano)); err != nil {
@@ -110,6 +117,36 @@ func TestAggregateUsageProjectFilter(t *testing.T) {
 	}
 }
 
+func TestAggregateUsagePlatformFilter(t *testing.T) {
+	db := openTestDB(t)
+	seedRowWithPlatform(t, db, "claude-s", "claude", "claude", mustTime(t, "2026-05-19T10:00:00Z"), 100, 0, 0, 0, 1.0)
+	seedRowWithPlatform(t, db, "codex-s", "codex", "gpt", mustTime(t, "2026-05-19T11:00:00Z"), 200, 0, 0, 0, 2.0)
+
+	rows, err := db.AggregateUsage(context.Background(), AggregateFilter{
+		Bucket: BucketDay, Platform: "codex",
+	})
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if len(rows) != 1 || rows[0].InputTokens != 200 {
+		t.Fatalf("expected only codex usage, got %+v", rows)
+	}
+}
+
+func TestListUsageForBlocksFilteredByPlatform(t *testing.T) {
+	db := openTestDB(t)
+	seedRowWithPlatform(t, db, "claude-s", "claude", "claude", mustTime(t, "2026-05-19T10:00:00Z"), 100, 0, 0, 0, 1.0)
+	seedRowWithPlatform(t, db, "codex-s", "codex", "gpt", mustTime(t, "2026-05-19T11:00:00Z"), 200, 0, 0, 0, 2.0)
+
+	rows, err := db.ListUsageForBlocksFilteredByPlatform(context.Background(), time.Time{}, time.Time{}, "", "claude")
+	if err != nil {
+		t.Fatalf("ListUsageForBlocksFilteredByPlatform: %v", err)
+	}
+	if len(rows) != 1 || rows[0].SessionID != "claude-s" {
+		t.Fatalf("expected only claude usage, got %+v", rows)
+	}
+}
+
 func TestAggregateUsageDateRange(t *testing.T) {
 	db := openTestDB(t)
 	seedRow(t, db, "s1", "x", mustTime(t, "2026-05-18T10:00:00Z"), 10, 0, 0, 0, 0)
@@ -166,11 +203,9 @@ func TestAggregateUsageGroupConcatModelOrder(t *testing.T) {
 
 func TestAggregateUsageWeek(t *testing.T) {
 	db := openTestDB(t)
-	// 2026-05-19 is Tuesday, week 20 (per strftime %W which uses
-	// Monday-as-first-day-of-week, same as Go ISO week here).
+	// 2026-05-19 is Tuesday, and ccusage weekly defaults to Sunday starts.
 	seedRow(t, db, "s1", "x", mustTime(t, "2026-05-19T10:00:00Z"), 10, 0, 0, 0, 0)
 	seedRow(t, db, "s2", "x", mustTime(t, "2026-05-25T10:00:00Z"), 20, 0, 0, 0, 0)
-	// 2026-05-25 is Monday week 21
 
 	rows, err := db.AggregateUsage(context.Background(), AggregateFilter{Bucket: BucketWeek})
 	if err != nil {
@@ -179,7 +214,24 @@ func TestAggregateUsageWeek(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("want 2 weeks, got %d (%+v)", len(rows), rows)
 	}
-	if rows[0].Bucket != "2026-W20" || rows[1].Bucket != "2026-W21" {
+	if rows[0].Bucket != "2026-05-17" || rows[1].Bucket != "2026-05-24" {
+		t.Errorf("buckets: %q / %q", rows[0].Bucket, rows[1].Bucket)
+	}
+}
+
+func TestAggregateUsageWeekStartMonday(t *testing.T) {
+	db := openTestDB(t)
+	seedRow(t, db, "s1", "x", mustTime(t, "2026-05-24T10:00:00Z"), 10, 0, 0, 0, 0)
+	seedRow(t, db, "s2", "x", mustTime(t, "2026-05-25T10:00:00Z"), 20, 0, 0, 0, 0)
+
+	rows, err := db.AggregateUsage(context.Background(), AggregateFilter{Bucket: BucketWeek, WeekStart: time.Monday})
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 weeks, got %d (%+v)", len(rows), rows)
+	}
+	if rows[0].Bucket != "2026-05-18" || rows[1].Bucket != "2026-05-25" {
 		t.Errorf("buckets: %q / %q", rows[0].Bucket, rows[1].Bucket)
 	}
 }

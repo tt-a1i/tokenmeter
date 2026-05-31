@@ -136,14 +136,15 @@ func TestE2EV12Smoke(t *testing.T) {
 			SessionLength: 5 * time.Hour,
 			Now:           v12Time("2026-05-20T12:00:00Z"),
 		}, v12UsageLoader{entries: []storage.TokenUsageEntry{
-			{SessionID: "block-smoke", Timestamp: v12Time("2026-05-20T10:00:00Z"), Model: "claude", InputTokens: 80, CostUSD: 1.0},
+			{SessionID: "block-smoke", Timestamp: v12Time("2026-05-20T10:00:00Z"), Model: "claude", InputTokens: 40, CostUSD: 0.5},
+			{SessionID: "block-smoke", Timestamp: v12Time("2026-05-20T11:00:00Z"), Model: "claude", InputTokens: 40, CostUSD: 0.5},
 		}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		v12AssertContains(t, out.String(), `"token_limit": 100`)
-		v12AssertContains(t, out.String(), `"usage_pct": 80`)
-		v12AssertContains(t, out.String(), `"status": "WARN"`)
+		v12AssertContains(t, out.String(), `"limit": 100`)
+		v12AssertContains(t, out.String(), `"percentUsed": 320`)
+		v12AssertContains(t, out.String(), `"status": "exceeds"`)
 	})
 
 	t.Run("GroupC_BlocksANSI", func(t *testing.T) {
