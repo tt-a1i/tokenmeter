@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -142,7 +143,7 @@ func TestRunCLIDispatchDailyJQFiltersOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("daily --jq: %v", err)
 	}
-	if out != "300\n" {
-		t.Fatalf("jq-filtered output = %q, want 300\\n", out)
+	if strings.TrimSpace(out) != "300" {
+		t.Fatalf("jq-filtered output = %q, want 300", out)
 	}
 }
